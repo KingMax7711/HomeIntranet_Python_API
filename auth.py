@@ -25,7 +25,7 @@ router = APIRouter(
 SECRET_KEY = str(os.getenv("SECRET_KEY"))
 ALGORITHM = "HS256"
 
-ACCESS_TOKEN_EXPIRE_MINUTES = 2
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
 REFRESH_TOKEN_EXPIRE_DAYS = 30
 
 # Cookies config
@@ -43,6 +43,14 @@ oauth2_bearer = OAuth2PasswordBearer(tokenUrl="auth/token")
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class CreateUser(BaseModel):
+    first_name: str
+    last_name: str
+    email: str
+    password: str
+    accepted_cgu: bool
+    accepted_privacy: bool
 
 def get_db():
     db = SessionLocal()
@@ -133,6 +141,60 @@ async def refresh_access_token(request: Request, db: db_dependency):
     new_access = create_access_token(user.email, user.id, user.token_version) # type: ignore
     api_log("token.refresh", level="INFO", request=request, tags=["auth", "refresh"], user_id=user.id,email=user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
     return {"access_token": new_access, "token_type": "bearer"}
+
+# ---------- Register: Création d'un compte ----------
+@router.post("/register", response_model=Token)
+async def register(user_data: CreateUser, db: db_dependency, request: Request):
+    existing_user = db.query(Users).filter(Users.email == user_data.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email déja utilisé")
+
+    if not user_data.accepted_cgu or not user_data.accepted_privacy:
+        raise HTTPException(status_code=400, detail="Vous devez accepter les CGU et la politique de confidentialité pour vous inscrire")
+    
+    if len(user_data.password) < 6:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit contenir au moins 6 caractères")
+    
+    if len(user_data.first_name) == 0 or len(user_data.last_name) == 0:
+        raise HTTPException(status_code=400, detail="Le prénom et le nom de famille ne peuvent pas être vides")
+    
+    if len(user_data.email) == 0 or "@" not in user_data.email:
+        raise HTTPException(status_code=400, detail="Adresse email invalide")
+
+    hashed_password = bcrypt_context.hash(user_data.password)
+    new_user = Users(
+        first_name=user_data.first_name.lower(),
+        last_name=user_data.last_name.lower(),
+        email=user_data.email,
+        password=hashed_password,
+        inscription_date=datetime.utcnow().date(),
+        accepted_cgu=user_data.accepted_cgu,
+        accepted_privacy=user_data.accepted_privacy
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    access_token = create_access_token(new_user.email, new_user.id, new_user.token_version) # type: ignore
+    refresh_token = create_refresh_token(new_user.email, new_user.id, new_user.token_version) # type: ignore
+
+    resp = JSONResponse({
+        "access_token": access_token,
+        "token_type": "bearer"
+    })
+
+    resp.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite=COOKIE_SAMESITE,  # "none" exige HTTPS côté navigateur
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 3600,
+        path="/",
+    )
+    api_log("register.success", level="INFO", request=request, tags=["auth", "register"], user_id=new_user.id,email=new_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
+    return resp
+
 
 # ---------- logout: supprime le cookie ----------
 @router.post("/logout")

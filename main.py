@@ -14,6 +14,13 @@ from database import engine, SessionLocal
 from models import Users
 import models
 import auth
+from shopping.category import router as category_router
+from shopping.product import router as product_router
+from shopping.shopping_list import router as shopping_list_router
+from shopping.shopping_list_items import router as shopping_list_items_router
+from shopping.malls import router as malls_router
+from shopping.houses import router as houses_router
+from shopping.shopping_list_view import router as shopping_list_view_router
 
 from auth import get_current_user
 from log import api_log
@@ -32,8 +39,13 @@ START_TIME = time.time()
 
 # Routes publiques
 app.include_router(auth.router)
-
-
+app.include_router(category_router)
+app.include_router(product_router)
+app.include_router(shopping_list_router)
+app.include_router(shopping_list_items_router)
+app.include_router(malls_router)
+app.include_router(houses_router)
+app.include_router(shopping_list_view_router)
 
 # Détermine dynamiquement les origines CORS autorisées
 _frontend_origins_env = os.getenv("FRONTEND_ORIGINS", "")
@@ -96,6 +108,7 @@ class UserPublic(BaseModel):
     email: str
     inscription_date: date | None = None
     privileges: str | None = None
+    house_id: int | None = None
     model_config = ConfigDict(from_attributes=True)
 
 def get_db():
