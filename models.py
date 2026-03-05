@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, BigInteger, Null, String, Date, DateTime, func, null
+from sqlalchemy import Boolean, Column, Float, ForeignKey, Integer, BigInteger, Index, Null, String, Date, DateTime, func, null, text
 from database import Base
 
 class Users(Base):
@@ -34,7 +34,7 @@ class Category(Base):
     __tablename__ = "categories"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
+    name = Column(String, index=True, unique=True)
 
 class Mall(Base):
     __tablename__ = "malls"
@@ -45,6 +45,22 @@ class Mall(Base):
 
 class Product(Base):
     __tablename__ = "products"
+
+    __table_args__ = (
+        Index(
+            "uq_products_name_category_notnull",
+            "name",
+            "category_id",
+            unique=True,
+            postgresql_where=text("category_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_products_name_category_null",
+            "name",
+            unique=True,
+            postgresql_where=text("category_id IS NULL"),
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)

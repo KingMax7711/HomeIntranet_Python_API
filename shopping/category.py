@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Request
 from database import SessionLocal
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from models import Category, Users
 from typing import List, Annotated
@@ -55,9 +56,13 @@ async def search_categories(name: str, db: db_dependency):
 async def create_category(category: CategoryCreate, db: db_dependency):
     db_category = Category(name=category.name.lower())
     db.add(db_category)
-    db.commit()
-    db.refresh(db_category)
-    return db_category
+    try:
+        db.commit()
+        db.refresh(db_category)
+        return db_category
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Category already exists")
 
 @router.delete("/delete/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_category(category_id: int, db: db_dependency):

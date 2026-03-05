@@ -74,7 +74,7 @@ async def create_shopping_list(shopping_list: ShoppingListCreate, db: db_depende
     db_shopping_list = ShoppingList(
         house_id=current_user.house_id,
         mall_id=shopping_list.mall_id,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(), # type: ignore
         status="preparation"
     )
     db.add(db_shopping_list)
@@ -101,7 +101,7 @@ async def create_shopping_list_from_old(new_shopping_list: ShoppingListCreate, o
     db_shopping_list = ShoppingList(
         house_id=current_user.house_id,
         mall_id=new_shopping_list.mall_id,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(),
         status="preparation"
     )
     db.add(db_shopping_list)
@@ -118,7 +118,7 @@ async def create_shopping_list_from_old(new_shopping_list: ShoppingListCreate, o
             price=item.price,
             comment=item.comment,
             status="pending",
-            created_at=datetime.utcnow()
+            created_at=datetime.now()
         )
         db.add(db_shopping_list_item)
     db.commit()
@@ -149,8 +149,24 @@ async def close_shopping_list(shopping_list_id: int, db: db_dependency, current_
     
     total_list_items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list_id).all()
     shopping_list.total = sum(item.price * item.quantity if item.price else 0 for item in total_list_items) # type: ignore #!!! Attention à calculer le total plus tard
-    shopping_list.closed_at = datetime.utcnow() # type: ignore
+    shopping_list.closed_at = datetime.now() # type: ignore
     shopping_list.status = "completed" # type: ignore
+    db.commit()
+    db.refresh(shopping_list)
+    return shopping_list
+
+@router.post("/set_in_progress/{shopping_list_id}", response_model=ShoppingListBase)
+async def set_in_progress_shopping_list(shopping_list_id: int, db: db_dependency, current_user: Users = Depends(get_current_user)):
+    shopping_list = db.query(ShoppingList).filter(ShoppingList.id == shopping_list_id).first()
+    if shopping_list is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found")
+    if shopping_list.house_id != current_user.house_id: #type: ignore
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list")
+    if shopping_list.status != "preparation": #type: ignore
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only shopping lists in preparation can be set to in progress")
+    
+    shopping_list.status = "in_progress" # type: ignore
+    shopping_list.version += 1 # type: ignore
     db.commit()
     db.refresh(shopping_list)
     return shopping_list
@@ -178,7 +194,7 @@ async def close_all_current_shopping_lists(db: db_dependency, current_user: User
     for shopping_list in shopping_lists:
         total_list_items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list.id).all()
         shopping_list.total = sum(item.price * item.quantity if item.price else 0 for item in total_list_items) # type: ignore #!!! Attention à calculer le total plus tard
-        shopping_list.closed_at = datetime.utcnow() # type: ignore
+        shopping_list.closed_at = datetime.now() # type: ignore
         shopping_list.status = "completed" # type: ignore
     db.commit()
     return shopping_lists
@@ -190,20 +206,3 @@ async def get_last_closed_shopping_list(db: db_dependency, current_user: Users =
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No closed shopping list found for this house")
     return shopping_list
 
-@router.post("/shopping_list/update_status", response_model=ShoppingListBase)
-async def update_shopping_list_status(shopping_list_id: int, new_status: str, db: db_dependency, current_user: Users = Depends(get_current_user)):
-    shopping_list = db.query(ShoppingList).filter(ShoppingList.id == shopping_list_id).first()
-    if shopping_list is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found")
-    if shopping_list.house_id != current_user.house_id: #type: ignore
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list")
-    
-    autorized_statuses = ["preparation", "in_progress"] #! On n'autorise pas de passer en completed via cette route, il faut utiliser la route de fermeture de la liste de course pour ça.
-    if new_status not in autorized_statuses:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid status: {new_status}. Status must be one of {autorized_statuses}")
-    
-    shopping_list.status = new_status # type: ignore
-    shopping_list.version += 1 # type: ignore
-    db.commit()
-    db.refresh(shopping_list)
-    return shopping_list

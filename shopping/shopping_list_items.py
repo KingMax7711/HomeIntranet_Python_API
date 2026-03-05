@@ -133,7 +133,7 @@ async def create_shopping_list_item(shopping_list_item: ShoppingListItemCreate, 
         in_promotion=shopping_list_item.in_promotion,
         quantity=shopping_list_item.quantity,
         price=shopping_list_item.price,
-        comment=shopping_list_item.comment,
+        comment="", #! On omet volontairement le commentaire, remplacer par le commentaire du produit
         status="pending",
         created_at=datetime.utcnow()
     )
@@ -247,6 +247,32 @@ async def affect_shopping_list_item_to_user(shopping_list_item_id: int, user_id:
     if user.house_id != shopping_list.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User doesn't belong to the house of the shopping list")
     db_shopping_list_item.affected_user_id = user_id # type: ignore
+    db.commit()
+    db.refresh(db_shopping_list_item)
+    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
+    return db_shopping_list_item
+
+class CustomUpdateShoppingListItem(BaseModel):
+    quantity: int | None = None
+    price: float | None = None
+    in_promotion: bool | None = None
+
+@router.post("/custom_update/{shopping_list_item_id}", response_model=ShoppingListItemBase)
+async def custom_update_shopping_list_item(shopping_list_item_id: int, update_data: CustomUpdateShoppingListItem, db: db_dependency, current_user: Users = Depends(get_current_user)):
+    db_shopping_list_item = db.query(ShoppingListItem).filter(ShoppingListItem.id == shopping_list_item_id).first()
+    if db_shopping_list_item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list item not found") 
+    shopping_list = db.query(ShoppingList).filter(ShoppingList.id == db_shopping_list_item.shopping_list_id).first()
+    if shopping_list is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found") 
+    if shopping_list.house_id != current_user.house_id: #type: ignore
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list") 
+    if update_data.quantity is not None:
+        db_shopping_list_item.quantity = update_data.quantity # type: ignore
+    if update_data.price is not None:
+        db_shopping_list_item.price = update_data.price # type: ignore
+    if update_data.in_promotion is not None:
+        db_shopping_list_item.in_promotion = update_data.in_promotion # type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
     increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 

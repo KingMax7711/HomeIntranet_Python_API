@@ -54,9 +54,20 @@ async def get_mall(mall_id: int, db: db_dependency):
 async def create_mall(mall: MallCreate, db: db_dependency):
     db_mall = Mall(
         name=mall.name.lower(),
-        location=mall.location
+        location=mall.location.lower() if mall.location else None
     )
     db.add(db_mall)
+    db.commit()
+    db.refresh(db_mall)
+    return db_mall
+
+@router.put("/update/{mall_id}", response_model=MallBase)
+async def update_mall(mall_id: int, mall: MallCreate, db: db_dependency):
+    db_mall = db.query(Mall).filter(Mall.id == mall_id).first()
+    if db_mall is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mall not found")
+    db_mall.name = mall.name.lower() #type: ignore
+    db_mall.location = mall.location.lower() if mall.location else None #type: ignore
     db.commit()
     db.refresh(db_mall)
     return db_mall
