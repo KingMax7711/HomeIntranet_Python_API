@@ -1,6 +1,21 @@
-.venv
-alembic
-logs
-alembic.ini
+# python
+__pycache__/
+*.pyc
+
+# env
 .env
-__pycache__
+.env.*
+!.env.example
+
+# venv
+.venv
+venv
+
+# logs
+logs/
+
+# IDE
+.vscode/
+
+# OS
+.DS_Store

@@ -53,14 +53,14 @@ class ProductRecurrenceCreate(BaseModel):
 async def get_all_product_recurrences(db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)]):
     product_recurrences = db.query(ProductRecurrence).filter(ProductRecurrence.house_id == current_user.house_id).all()
     if not product_recurrences:        
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No product recurrences found for this house")
+        return []
     return product_recurrences
 
 @router.get("/all_detailled", response_model=List[ProductRecurrenceDetailled])
 async def get_all_product_recurrences_detailled(db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)]):
     product_recurrences = db.query(ProductRecurrence).filter(ProductRecurrence.house_id == current_user.house_id).all()
     if not product_recurrences:        
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No product recurrences found for this house")
+        return []
     
     list_product_recurrences_detailled = []
     for product_recurrence in product_recurrences:

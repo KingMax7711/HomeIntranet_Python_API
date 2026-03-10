@@ -140,11 +140,3 @@ async def leave_house(db: db_dependency, current_user: Users = Depends(get_curre
     db.commit()
     
     return {"message": "Left house successfully"}
-
-@router.get('/invitation_code')
-async def get_invitation_code(db: db_dependency, current_user: Users = Depends(get_current_user)):
-    house = db.query(House).filter(House.id == current_user.house_id).first()
-    if house is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="You don't seem to belong to a house")
-    
-    return {"invitation_code": house.invitation_code}

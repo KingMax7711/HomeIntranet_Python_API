@@ -40,13 +40,6 @@ async def get_all_categories(db: db_dependency):
     categories = db.query(Category).all()
     return categories
 
-@router.get("/{category_id}", response_model=CategoryBase)
-async def get_category(category_id: int, db: db_dependency):
-    category = db.query(Category).filter(Category.id == category_id).first()
-    if category is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-    return category
-
 @router.get("/search/{name}", response_model=List[CategoryBase])
 async def search_categories(name: str, db: db_dependency):
     categories = db.query(Category).filter(Category.name.contains(name.lower())).all()
@@ -64,10 +57,3 @@ async def create_category(category: CategoryCreate, db: db_dependency):
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Category already exists")
 
-@router.delete("/delete/{category_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_category(category_id: int, db: db_dependency):
-    category = db.query(Category).filter(Category.id == category_id).first()
-    if category is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-    db.delete(category)
-    db.commit()
