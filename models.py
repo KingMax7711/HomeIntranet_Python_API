@@ -87,9 +87,18 @@ class ShoppingListItem(Base):
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     shopping_list_id = Column(Integer, ForeignKey("shopping_lists.id"), nullable=False)
     affected_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    custom_sort_index = Column(Integer, nullable=True) # Permet de fixer l'ordre des produits dans la liste
     in_promotion = Column(Boolean, default=False, nullable=False, server_default="false")
+    need_coupons = Column(Boolean, default=False, nullable=False, server_default="false")
     price = Column(Float, nullable=True)
     quantity = Column(Integer, default=1, nullable=False, server_default="1")
     status = Column(String, index=True, nullable=False, server_default="pending") # pending / found / not_found / given_up
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     comment = Column(String, nullable=True)
+
+class ProductRecurrence(Base):
+    __tablename__ = "product_recurrences"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    house_id = Column(Integer, ForeignKey("houses.id"), nullable=False)

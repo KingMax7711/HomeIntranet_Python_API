@@ -22,6 +22,7 @@ from shopping.malls import router as malls_router
 from shopping.houses import router as houses_router
 from shopping.shopping_list_view import router as shopping_list_view_router
 from shopping.shopping_list_globals import router as shopping_list_globals_router
+from shopping.product_recurrences import router as product_recurrences_router
 
 from auth import get_current_user
 from log import api_log
@@ -48,6 +49,7 @@ app.include_router(malls_router)
 app.include_router(houses_router)
 app.include_router(shopping_list_view_router)
 app.include_router(shopping_list_globals_router)
+app.include_router(product_recurrences_router)
 
 # Détermine dynamiquement les origines CORS autorisées
 _frontend_origins_env = os.getenv("FRONTEND_ORIGINS", "")

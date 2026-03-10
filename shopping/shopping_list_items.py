@@ -62,7 +62,9 @@ class ShoppingListItemBase(BaseModel):
     shopping_list_id: int 
     product_id: int 
     affected_user_id: int | None = None
+    custom_sort_index: int | None = None
     in_promotion: bool
+    need_coupons: bool
     quantity: int
     price: float | None = None
     comment: str | None = None
@@ -75,6 +77,7 @@ class ShoppingListItemCreate(BaseModel):
     product_id: int 
     affected_user_id: int | None = None
     in_promotion: bool
+    need_coupons: bool
     quantity: int
     price: float | None = None
     comment: str | None = None
@@ -131,6 +134,7 @@ async def create_shopping_list_item(shopping_list_item: ShoppingListItemCreate, 
         product_id=shopping_list_item.product_id,
         affected_user_id=shopping_list_item.affected_user_id,
         in_promotion=shopping_list_item.in_promotion,
+        need_coupons=shopping_list_item.need_coupons,
         quantity=shopping_list_item.quantity,
         price=shopping_list_item.price,
         comment="", #! On omet volontairement le commentaire, remplacer par le commentaire du produit
@@ -256,6 +260,7 @@ class CustomUpdateShoppingListItem(BaseModel):
     quantity: int | None = None
     price: float | None = None
     in_promotion: bool | None = None
+    need_coupons: bool | None = None
 
 @router.post("/custom_update/{shopping_list_item_id}", response_model=ShoppingListItemBase)
 async def custom_update_shopping_list_item(shopping_list_item_id: int, update_data: CustomUpdateShoppingListItem, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -273,6 +278,8 @@ async def custom_update_shopping_list_item(shopping_list_item_id: int, update_da
         db_shopping_list_item.price = update_data.price # type: ignore
     if update_data.in_promotion is not None:
         db_shopping_list_item.in_promotion = update_data.in_promotion # type: ignore
+    if update_data.need_coupons is not None:
+        db_shopping_list_item.need_coupons = update_data.need_coupons # type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
     increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 

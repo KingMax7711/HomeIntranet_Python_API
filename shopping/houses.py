@@ -82,18 +82,6 @@ async def create_house(house: HouseCreate, db: db_dependency, current_user: User
     db.refresh(db_user)
     return db_house
 
-@router.delete("/delete", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_house(db: db_dependency, current_user: Users = Depends(get_current_user)):
-    house = db.query(House).filter(House.id == current_user.house_id).first()
-    if house is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="You don't seem to belong to a house")
-    
-    users_in_house = db.query(Users).filter(Users.house_id == house.id).all()
-    for user in users_in_house:
-        user.house_id = None # type: ignore
-    db.delete(house)
-    db.commit()
-
 @router.put("/update", response_model=HouseBase)
 async def update_house(house: HouseCreate, db: db_dependency, current_user: Users = Depends(get_current_user)):
     db_house = db.query(House).filter(House.id == current_user.house_id).first()
@@ -110,10 +98,10 @@ async def generate_invitation_code(db: db_dependency, current_user: Users = Depe
     if house is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="You don't seem to belong to a house")
     
-    # Generate a random 6-character alphanumeric code
+    # Generate a random 9-character alphanumeric code
     import random
     import string
-    invitation_code = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+    invitation_code = ''.join(random.choices(string.ascii_letters + string.digits, k=9))
     
     # Save the invitation code to the database ()
     house.invitation_code = invitation_code # type: ignore
@@ -141,7 +129,14 @@ async def leave_house(db: db_dependency, current_user: Users = Depends(get_curre
     db_user = db.query(Users).filter(Users.id == current_user.id).first()
     if db_user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    db_user.house_id = None # type: ignore
+    
+    all_users_in_house = db.query(Users).filter(Users.house_id == db_user.house_id).all()
+    if len(all_users_in_house) == 1:
+        # If the user is the only one in the house, delete the house
+            db_user.house_id = None # type: ignore
+            db.query(House).filter(House.id == db_user.house_id).delete()
+    else:
+        db_user.house_id = None # type: ignore
     db.commit()
     
     return {"message": "Left house successfully"}

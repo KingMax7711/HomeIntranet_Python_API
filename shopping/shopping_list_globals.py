@@ -74,6 +74,7 @@ class articleRegister(BaseModel):
     shopping_list: int #? Envoyer par le front qui connait l'id de la shopping list active, mais on vérifira quand même
     #! On omet volontraiement le champs affected_user, il sera entrer par l'utilisateur plus tard
     in_promotion: bool 
+    need_coupons: bool
     price: float
     quantity: int
     #! Tout les champs suivant sont volontairement omis, ils seront calculé ou entrer plus tard
@@ -87,6 +88,7 @@ class ShoppingListItemBase(BaseModel):
     product_id: int
     shopping_list_id: int
     in_promotion: bool 
+    need_coupons: bool
     price: float | None = None
     quantity: int
     comment: str | None = None
@@ -235,6 +237,7 @@ async def register_article(article: articleRegister, db: db_dependency, current_
             product_id=product_id,
             shopping_list_id=shopping_list.id,
             in_promotion=article.in_promotion,
+            need_coupons=article.need_coupons,
             price=article.price,
             quantity=article.quantity,
             status="pending",

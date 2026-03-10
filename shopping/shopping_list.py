@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, status
 from sqlalchemy import null
 from database import SessionLocal
 from sqlalchemy.orm import Session
-from models import ShoppingList, ShoppingListItem, Users
+from models import ShoppingList, ShoppingListItem, Users, ProductRecurrence, Product
 from typing import List, Annotated
 from pydantic import BaseModel, ConfigDict
 from auth import get_current_user
@@ -13,6 +13,7 @@ def connection_required(current_user: Annotated[Users, Depends(get_current_user)
     if not current_user:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
     return current_user
+
 
 router = APIRouter(
     prefix="/shopping_lists",
@@ -29,6 +30,12 @@ def get_db():
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
+
+def increment_version(shopping_list_id: int, db: db_dependency):
+    shopping_list = db.query(ShoppingList).filter(ShoppingList.id == shopping_list_id).first()
+    if shopping_list is not None:
+        shopping_list.version += 1 #type: ignore
+        db.commit()
 class ShoppingListBase(BaseModel):
     id: int 
     house_id: int 
@@ -80,6 +87,26 @@ async def create_shopping_list(shopping_list: ShoppingListCreate, db: db_depende
     db.add(db_shopping_list)
     db.commit()
     db.refresh(db_shopping_list)
+
+    product_recurrences = db.query(ProductRecurrence).filter(ProductRecurrence.house_id == current_user.house_id).all() #type: ignore
+    for product_recurrence in product_recurrences:
+        db_product = db.query(Product).filter(Product.id == product_recurrence.product_id).first()
+
+        db_shopping_list_item = ShoppingListItem(
+            shopping_list_id=db_shopping_list.id,
+            product_id=product_recurrence.product_id,
+            affected_user_id=None,
+            in_promotion=False,
+            quantity=1,
+            price=db_product.default_price if db_product else None,
+            comment=None,
+            status="pending",
+            created_at=datetime.now()
+        )
+        db.add(db_shopping_list_item)
+
+    db.commit()
+    db.refresh(db_shopping_list)
     return db_shopping_list
 
 @router.post("/create_from_old/{old_shopping_list_id}", response_model=ShoppingListBase)
@@ -121,6 +148,27 @@ async def create_shopping_list_from_old(new_shopping_list: ShoppingListCreate, o
             created_at=datetime.now()
         )
         db.add(db_shopping_list_item)
+    db.commit()
+    db.refresh(db_shopping_list)
+
+    product_recurrences = db.query(ProductRecurrence).filter(ProductRecurrence.house_id == current_user.house_id).all() #type: ignore
+    for product_recurrence in product_recurrences:
+        already_in_list = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == db_shopping_list.id, ShoppingListItem.product_id == product_recurrence.product_id).first()
+        if already_in_list is None:
+            db_product = db.query(Product).filter(Product.id == product_recurrence.product_id).first()
+
+            db_shopping_list_item = ShoppingListItem(
+                shopping_list_id=db_shopping_list.id,
+                product_id=product_recurrence.product_id,
+                affected_user_id=None,
+                in_promotion=False,
+                quantity=1,
+                price=db_product.default_price if db_product else None,
+                comment=None,
+                status="pending",
+                created_at=datetime.now()
+            )
+            db.add(db_shopping_list_item)
     db.commit()
     db.refresh(db_shopping_list)
     return db_shopping_list
@@ -206,3 +254,22 @@ async def get_last_closed_shopping_list(db: db_dependency, current_user: Users =
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No closed shopping list found for this house")
     return shopping_list
 
+@router.post("/sort_items/{shopping_list_id}", response_model=ShoppingListBase)
+async def sort_items_in_shopping_list(shopping_list_id: int, sorted_item_ids: List[int], db: db_dependency, current_user: Users = Depends(get_current_user)):
+    shopping_list = db.query(ShoppingList).filter(ShoppingList.id == shopping_list_id).first()
+    if shopping_list is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found")
+    if shopping_list.house_id != current_user.house_id: #type: ignore
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list")
+    
+    items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list_id).all()
+    item_dict = {item.id: item for item in items}
+    
+    for index, item_id in enumerate(sorted_item_ids):
+        if item_id in item_dict:
+            item_dict[item_id].custom_sort_index = index # type: ignore
+    
+    db.commit()
+    db.refresh(shopping_list)
+    increment_version(shopping_list_id, db) #type: ignore
+    return shopping_list

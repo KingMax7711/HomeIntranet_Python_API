@@ -66,9 +66,11 @@ class ProductBase(BaseModel):
 
 class ShoppingListItemDetailed(BaseModel):
     id: int
+    custom_sort_index: int | None = None
     quantity: int
     price: float | None = None
     in_promotion: bool
+    need_coupons: bool
     status: str # pending / found / not_found / given_up
 
     product: ProductBase | None = None
@@ -92,6 +94,23 @@ class ShoppingListView(BaseModel):
     status: str # preparation / in_progress / completed
     total: float | None = None
     version: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ShoppingListRecap(BaseModel):
+    id: int
+
+    house_name: str | None = None
+
+    # Centres commerciaux
+    mall_name: str | None = None
+    mall_location: str | None = None
+
+    number_of_items: int
+    total: float | None = None
+
+    created_at: datetime | None = None
+    status: str # preparation / in_progress / completed
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -133,10 +152,12 @@ async def get_current_shopping_list_view(db: db_dependency, current_user: Users 
         
         items_detailed.append(ShoppingListItemDetailed(
             id=item.id,
+            custom_sort_index=item.custom_sort_index,
             quantity=item.quantity,
             price=item.price,
             status=item.status,
             in_promotion=item.in_promotion,
+            need_coupons=item.need_coupons,
             product=ProductBase.from_orm(product) if product else None,
             affected_user=UserInList.from_orm(user) if user else None
         ))
@@ -191,10 +212,12 @@ async def get_last_shopping_list_view(db: db_dependency, current_user: Users = D
         
         items_detailed.append(ShoppingListItemDetailed(
             id=item.id,
+            custom_sort_index=item.custom_sort_index,
             quantity=item.quantity,
             price=item.price,
             status=item.status,
             in_promotion=item.in_promotion,
+            need_coupons=item.need_coupons,
             product=ProductBase.from_orm(product) if product else None,
             affected_user=UserInList.from_orm(user) if user else None
         ))
@@ -229,3 +252,41 @@ async def synchronize_current_shopping_list_view(db: db_dependency, response: Re
 
     response.headers["ETag"] = current_etag
     return await get_current_shopping_list_view(db, current_user)
+
+@router.get("/shopping_list/recap", response_model=ShoppingListRecap)
+async def get_last_shopping_list_recap(db: db_dependency, current_user: Users = Depends(get_current_user)):
+    shopping_list = db.query(ShoppingList).filter(
+        ShoppingList.house_id == current_user.house_id,
+        ShoppingList.status.in_(["preparation", "in_progress"])
+    ).first()
+    if shopping_list is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No current shopping list found for this house")
+
+    mall = None
+    if shopping_list.mall_id is not None:
+        mall = db.query(Mall).filter(Mall.id == shopping_list.mall_id).first()
+
+    house = None
+    if shopping_list.house_id is not None:
+        house = db.query(House).filter(House.id == shopping_list.house_id).first()
+
+    items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list.id).all()
+
+    #! On rapelle que le total final est calculé à la cloture de la liste. D'ou ce calcul.
+    current_total = 0.0
+    number_of_items = 0
+    for item in items:
+        if item.price is not None:
+            current_total += item.price * item.quantity
+        number_of_items += item.quantity
+
+    return ShoppingListRecap(
+        id=shopping_list.id,
+        house_name=house.name if house else None,
+        mall_name=mall.name if mall else None,
+        mall_location=mall.location if mall else None,
+        number_of_items=number_of_items,
+        total=current_total,
+        created_at=shopping_list.created_at,
+        status=shopping_list.status
+    )
