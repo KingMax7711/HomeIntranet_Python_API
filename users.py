@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from models import House, Users
 from typing import List, Annotated, Optional, cast
 from pydantic import BaseModel, ConfigDict
-from auth import get_current_user
+from auth import get_current_user, bcrypt_context
 from log import api_log
 
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
