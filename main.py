@@ -23,6 +23,7 @@ from shopping.houses import router as houses_router
 from shopping.shopping_list_view import router as shopping_list_view_router
 from shopping.shopping_list_globals import router as shopping_list_globals_router
 from shopping.product_recurrences import router as product_recurrences_router
+from users import router as users_router
 
 from auth import get_current_user
 from log import api_log
@@ -33,7 +34,7 @@ app = FastAPI(
     # Permet d’être servi derrière un préfixe (ex: /api) via le reverse proxy
     root_path=os.getenv("API_ROOT_PATH", "/api"),
 )
-app.title = "Neogend API"
+app.title = "NestBoard API"
 app.version = str(os.getenv("APP_VERSION", "Unknown"))
 START_TIME = time.time()
 # Gestion des systèmes par les Admins
@@ -50,6 +51,7 @@ app.include_router(houses_router)
 app.include_router(shopping_list_view_router)
 app.include_router(shopping_list_globals_router)
 app.include_router(product_recurrences_router)
+app.include_router(users_router)
 
 # Détermine dynamiquement les origines CORS autorisées
 _frontend_origins_env = os.getenv("FRONTEND_ORIGINS", "")
@@ -146,23 +148,24 @@ def create_default_admin_user():
     finally:
         db.close()
 
-@app.get("/users/me/", response_model=UserPublic)
-async def read_user_me(current_user: user_dependency, request: Request):
-    if current_user is None:
-        api_log("users.me.unauthenticated", level="WARNING", request=request, tags=["users", "me"], correlation_id=request.headers.get("x-correlation-id"))
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-    user_id: Optional[int] = cast(Optional[int], getattr(current_user, "id", None))
-    email: Optional[str] = cast(Optional[str], getattr(current_user, "email", None))
-    api_log(
-        "users.me.success",
-        level="INFO",
-        request=request,
-        user_id=user_id,
-        email=email,
-        tags=["users", "me"],
-        correlation_id=request.headers.get("x-correlation-id"),
-    )
-    return current_user
+# !!! Endpoints déplacer vers -> users.py
+# @app.get("/users/me/", response_model=UserPublic)
+# async def read_user_me(current_user: user_dependency, request: Request):
+#     if current_user is None:
+#         api_log("users.me.unauthenticated", level="WARNING", request=request, tags=["users", "me"], correlation_id=request.headers.get("x-correlation-id"))
+#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+#     user_id: Optional[int] = cast(Optional[int], getattr(current_user, "id", None))
+#     email: Optional[str] = cast(Optional[str], getattr(current_user, "email", None))
+#     api_log(
+#         "users.me.success",
+#         level="INFO",
+#         request=request,
+#         user_id=user_id,
+#         email=email,
+#         tags=["users", "me"],
+#         correlation_id=request.headers.get("x-correlation-id"),
+#     )
+#     return current_user
 
 @app.get("/health")
 async def health(db: db_dependency, request: Request):
