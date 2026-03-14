@@ -1,10 +1,9 @@
 from datetime import date
 from fastapi import APIRouter, HTTPException, Depends, status, Request
-from sqlalchemy import Date
 from database import SessionLocal
 from sqlalchemy.orm import Session
-from models import House, Users
-from typing import List, Annotated, Optional, cast
+from models import  Users
+from typing import  Annotated, Optional, cast
 from pydantic import BaseModel, ConfigDict
 from auth import get_current_user, bcrypt_context
 from log import api_log
@@ -96,6 +95,15 @@ async def update_user_password(user_update: UserUpdatePassword, db: db_dependenc
     if not bcrypt_context.verify(user_update.current_password, db_user.password): # type: ignore
         api_log("users.update_password.invalid_current_password", level="WARNING", request=request, tags=["users", "update_password"], user_id=db_user.id,email=db_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+    
+    if len(user_update.new_password) < 6:
+        api_log("users.update_password.weak_new_password", level="WARNING", request=request, tags=["users", "update_password"], user_id=db_user.id,email=db_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New password must be at least 6 characters long")
+    
+    if user_update.new_password == user_update.current_password:
+        api_log("users.update_password.same_new_password", level="WARNING", request=request, tags=["users", "update_password"], user_id=db_user.id,email=db_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="New password must be different from current password")
+
     db_user.password = bcrypt_context.hash(user_update.new_password) # type: ignore
     db_user.token_version += 1 # type: ignore
     db.add(db_user)
@@ -118,6 +126,9 @@ async def update_user_password(user_update: UserUpdatePassword, db: db_dependenc
 @router.post("/end_all_sessions")
 async def end_all_sessions(db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)], request: Request):
     db_user = db.query(Users).filter(Users.id == current_user.id).first()
+    if db_user is None:
+        api_log("users.end_all_sessions.user_not_found", level="ERROR", request=request, tags=["users", "end_all_sessions"], user_id=current_user.id,email=current_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     db_user.token_version += 1 # type: ignore
     db.add(db_user)
     db.commit()

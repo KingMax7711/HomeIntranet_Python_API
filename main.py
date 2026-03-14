@@ -148,25 +148,6 @@ def create_default_admin_user():
     finally:
         db.close()
 
-# !!! Endpoints déplacer vers -> users.py
-# @app.get("/users/me/", response_model=UserPublic)
-# async def read_user_me(current_user: user_dependency, request: Request):
-#     if current_user is None:
-#         api_log("users.me.unauthenticated", level="WARNING", request=request, tags=["users", "me"], correlation_id=request.headers.get("x-correlation-id"))
-#         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-#     user_id: Optional[int] = cast(Optional[int], getattr(current_user, "id", None))
-#     email: Optional[str] = cast(Optional[str], getattr(current_user, "email", None))
-#     api_log(
-#         "users.me.success",
-#         level="INFO",
-#         request=request,
-#         user_id=user_id,
-#         email=email,
-#         tags=["users", "me"],
-#         correlation_id=request.headers.get("x-correlation-id"),
-#     )
-#     return current_user
-
 @app.get("/health")
 async def health(db: db_dependency, request: Request):
     uptime_s = round(time.time() - START_TIME, 3)
