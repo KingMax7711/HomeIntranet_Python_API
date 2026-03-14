@@ -49,9 +49,6 @@ class UserUpdatePassword(BaseModel):
 
 @router.get("/me", response_model=UserPublic)
 async def read_user_me(current_user: Annotated[Users, Depends(get_current_user)], request: Request):
-    if current_user is None:
-        api_log("users.me.unauthenticated", level="WARNING", request=request, tags=["users", "me"], correlation_id=request.headers.get("x-correlation-id"))
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     user_id: Optional[int] = cast(Optional[int], getattr(current_user, "id", None))
     email: Optional[str] = cast(Optional[str], getattr(current_user, "email", None))
     api_log(
@@ -68,6 +65,14 @@ async def read_user_me(current_user: Annotated[Users, Depends(get_current_user)]
 @router.post("/update", response_model=UserPublic)
 async def update_user_me(user_update: UserUpdate, db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)], request: Request):
     db_user = db.query(Users).filter(Users.id == current_user.id).first()
+
+    if user_update.first_name is not None and len(user_update.first_name) < 2:
+        api_log("users.update.invalid_first_name", level="WARNING", request=request, tags=["users", "update"], user_id=db_user.id,email=db_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="First name must be at least 2 characters long")
+    if user_update.last_name is not None and len(user_update.last_name) < 2:
+        api_log("users.update.invalid_last_name", level="WARNING", request=request, tags=["users", "update"], user_id=db_user.id,email=db_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Last name must be at least 2 characters long")
+
     if user_update.first_name is not None:
         db_user.first_name = user_update.first_name.lower() # type: ignore
     if user_update.last_name is not None:

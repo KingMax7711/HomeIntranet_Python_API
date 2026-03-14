@@ -1,7 +1,7 @@
 from datetime import date
-from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi import FastAPI, Depends, Request
 from pydantic import BaseModel, ConfigDict
-from typing import List, Annotated, Optional, cast
+from typing import  Annotated
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +25,6 @@ from shopping.shopping_list_globals import router as shopping_list_globals_route
 from shopping.product_recurrences import router as product_recurrences_router
 from users import router as users_router
 
-from auth import get_current_user
 from log import api_log
 
 load_dotenv()
@@ -125,7 +124,6 @@ def get_db():
         db.close()
 
 db_dependency = Annotated[Session, Depends(get_db)]
-user_dependency = Annotated[models.Users, Depends(get_current_user)]
 
 # Création d'un utilisateur admin par défaut si aucun utilisateur n'existe
 def create_default_admin_user():
