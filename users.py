@@ -8,15 +8,9 @@ from pydantic import BaseModel, ConfigDict
 from auth import get_current_user, bcrypt_context
 from log import api_log
 
-def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
-    if not current_user:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
-    return current_user
-
 router = APIRouter(
     prefix="/users",
-    tags=["users"], 
-    dependencies=[Depends(connection_required)]
+    tags=["users"],
 )
 
 def get_db():
@@ -49,9 +43,6 @@ class UserUpdatePassword(BaseModel):
 
 @router.get("/me", response_model=UserPublic)
 async def read_user_me(current_user: Annotated[Users, Depends(get_current_user)], request: Request):
-    if current_user is None:
-        api_log("users.me.unauthenticated", level="WARNING", request=request, tags=["users", "me"], correlation_id=request.headers.get("x-correlation-id"))
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
     user_id: Optional[int] = cast(Optional[int], getattr(current_user, "id", None))
     email: Optional[str] = cast(Optional[str], getattr(current_user, "email", None))
     api_log(
@@ -68,6 +59,8 @@ async def read_user_me(current_user: Annotated[Users, Depends(get_current_user)]
 @router.post("/update", response_model=UserPublic)
 async def update_user_me(user_update: UserUpdate, db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)], request: Request):
     db_user = db.query(Users).filter(Users.id == current_user.id).first()
+    if db_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     if user_update.first_name is not None:
         db_user.first_name = user_update.first_name.lower() # type: ignore
     if user_update.last_name is not None:
@@ -91,6 +84,8 @@ async def update_user_me(user_update: UserUpdate, db: db_dependency, current_use
 @router.post("/update_password")
 async def update_user_password(user_update: UserUpdatePassword, db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)], request: Request):
     db_user = db.query(Users).filter(Users.id == current_user.id).first()
+    if db_user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     if not bcrypt_context.verify(user_update.current_password, db_user.password): # type: ignore
         api_log("users.update_password.invalid_current_password", level="WARNING", request=request, tags=["users", "update_password"], user_id=db_user.id,email=db_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
