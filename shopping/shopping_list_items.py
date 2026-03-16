@@ -275,13 +275,14 @@ async def custom_update_shopping_list_item(shopping_list_item_id: int, update_da
         db_shopping_list_item.in_promotion = update_data.in_promotion # type: ignore
     if update_data.need_coupons is not None:
         db_shopping_list_item.need_coupons = update_data.need_coupons # type: ignore
+        
     #! Le commentaire est traité à part, on le met à jour même s'il est à None, pour permettre de supprimer un commentaire existant
-        db_linked_product = db.query(Product).filter(Product.id == db_shopping_list_item.product_id).first()
-        linked_product_comment = cast(str | None, db_linked_product.comment) if db_linked_product is not None else None
-        if linked_product_comment == update_data.comment:
-            db_shopping_list_item.comment = None # type: ignore
-        else:
-            db_shopping_list_item.comment = update_data.comment # type: ignore
+    db_linked_product = db.query(Product).filter(Product.id == db_shopping_list_item.product_id).first()
+    linked_product_comment = cast(str | None, db_linked_product.comment) if db_linked_product is not None else None
+    if linked_product_comment == update_data.comment:
+        db_shopping_list_item.comment = None # type: ignore
+    else:
+        db_shopping_list_item.comment = update_data.comment # type: ignore
     increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
