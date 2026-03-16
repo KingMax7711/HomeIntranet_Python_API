@@ -287,12 +287,13 @@ async def custom_update_shopping_list_item(shopping_list_item_id: int, update_da
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list") 
     if update_data.quantity is not None:
         db_shopping_list_item.quantity = update_data.quantity # type: ignore
-    if update_data.price is not None:
-        db_product = db.query(Product).filter(Product.id == db_shopping_list_item.product_id).first()
-        if db_product is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Linked product not found")
-        db_product.default_price = update_data.price # type: ignore
-        #! On met à jour le prix du produit lié, ce qui aura pour effet de mettre à jour le prix de tous les items liés à ce produit, même ceux qui n'ont pas été modifiés via cette route. C'est volontaire, pour éviter d'avoir un prix dans l'item qui diverge du prix du produit.
+    
+    #! Le prix est traité à part, car un none équivaut à une suppression du prix.
+    db_product = db.query(Product).filter(Product.id == db_shopping_list_item.product_id).first()
+    if db_product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Linked product not found")
+    db_product.default_price = update_data.price # type: ignore
+    #! On met à jour le prix du produit lié, ce qui aura pour effet de mettre à jour le prix de tous les items liés à ce produit, même ceux qui n'ont pas été modifiés via cette route. C'est volontaire, pour éviter d'avoir un prix dans l'item qui diverge du prix du produit.
 
     if update_data.in_promotion is not None:
         db_shopping_list_item.in_promotion = update_data.in_promotion # type: ignore
