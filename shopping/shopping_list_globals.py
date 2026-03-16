@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import Users, ShoppingList, ShoppingListItem, Product, Category
+from models import Users, ShoppingList, ShoppingListItem, Product, Category, Mall, ProductRecurrence
 from auth import get_current_user
 from typing import Annotated, List
 from pydantic import BaseModel, ConfigDict
@@ -310,3 +310,17 @@ async def update_products_custom(products: ProductUpdateCustom, db: db_dependenc
         raise
     except Exception:
         raise
+
+class CatalogueRecap(BaseModel):
+    products_total: int
+    categories_total: int
+    recurrences_total: int
+    malls_total: int
+
+@router.get("/catalogue_recap", response_model=CatalogueRecap)
+async def get_catalogue_recap(db: db_dependency, current_user: Users = Depends(get_current_user)):
+    products_total = db.query(Product).count()
+    categories_total = db.query(Category).count()
+    recurrences_total = db.query(ProductRecurrence).filter(ProductRecurrence.house_id == current_user.house_id).count()
+    malls_total = db.query(Mall).count()
+    return CatalogueRecap(products_total=products_total, categories_total=categories_total, recurrences_total=recurrences_total, malls_total=malls_total)
