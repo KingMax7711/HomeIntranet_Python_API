@@ -5,7 +5,7 @@ from sqlalchemy import Date
 from sqlalchemy.exc import IntegrityError
 from database import SessionLocal
 from sqlalchemy.orm import Session
-from models import Category, Product, Users, ShoppingListItem, ShoppingList
+from models import Category, Product, Users, ShoppingListItem, ShoppingList, ProductRecurrence
 from typing import List, Annotated
 from pydantic import BaseModel
 from auth import get_current_user
@@ -74,8 +74,11 @@ async def delete_product(product_id: int, db: db_dependency):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
     reference = db.query(ShoppingListItem).filter(ShoppingListItem.product_id == product_id).all()
+    reference_bis = db.query(ProductRecurrence).filter(ProductRecurrence.product_id == product_id).all()
     for article in reference:
         db.delete(article)
+    for recurrence in reference_bis:
+        db.delete(recurrence)
 
     db.delete(product)
     for shopping_list_id, in affected_rows:

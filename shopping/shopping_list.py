@@ -175,7 +175,6 @@ async def update_shopping_list(shopping_list_id: int, shopping_list: ShoppingLis
     if db_shopping_list is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found")
     
-    db_shopping_list.house_id = shopping_list.house_id # type: ignore
     db_shopping_list.mall_id = shopping_list.mall_id # type: ignore
     increment_current_list_version(db, shopping_list_id=shopping_list_id)
     db.commit()

@@ -64,7 +64,7 @@ async def create_category(category: CategoryCreate, db: db_dependency):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Category already exists")
     
 @router.put("/update/{category_id}", response_model=CategoryBase)
-async def update_category(category_id: int, category: CategoryCreate, db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)]):
+async def update_category(category_id: int, category: CategoryCreate, db: db_dependency):
     db_category = db.query(Category).filter(Category.id == category_id).first()
     if not db_category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
@@ -84,7 +84,7 @@ async def update_category(category_id: int, category: CategoryCreate, db: db_dep
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Category with this name already exists")
 
 @router.delete("/delete/{category_id}")
-async def delete_category(category_id: int, db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)]):
+async def delete_category(category_id: int, db: db_dependency):
     force_delete = False
     category = db.query(Category).filter(Category.id == category_id).first()
     if not category:

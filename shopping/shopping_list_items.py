@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from models import ShoppingListItem, ShoppingList, Users
 from typing import List, Annotated
 from pydantic import BaseModel, ConfigDict
-from typing import List, Annotated
 from auth import get_current_user
 from shopping.list_versioning import increment_current_list_version
 
