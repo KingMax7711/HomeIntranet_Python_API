@@ -76,7 +76,7 @@ class articleRegister(BaseModel):
     #! On omet volontraiement le champs affected_user, il sera entrer par l'utilisateur plus tard
     in_promotion: bool 
     need_coupons: bool
-    price: float
+    price: float | None = None
     quantity: int
     comment: str | None = None
 
@@ -214,8 +214,6 @@ async def get_all_categories(db: db_dependency, current_user: Users = Depends(ge
 async def register_article(article: articleRegister, db: db_dependency, current_user: Users = Depends(get_current_user)):
     if article.quantity <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantity must be > 0")
-    if article.price < 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Price must be >= 0")
 
     shopping_list = db.query(ShoppingList).filter(ShoppingList.id == article.shopping_list, ShoppingList.house_id == current_user.house_id, ShoppingList.status.in_(["preparation", "in_progress"])).first()
     if not shopping_list:
@@ -223,6 +221,9 @@ async def register_article(article: articleRegister, db: db_dependency, current_
 
     try:
         product_id = _resolve_or_create_product_id(db, article.product)
+        linked_product = db.query(Product).filter(Product.id == product_id).first()
+        if linked_product is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
         #? On vérifie que l'article qu'on ajoute soit pas déja dans la liste, si c'est le cas on incrémente uniquement la quantité au lieu de créer une nouvelle ligne
         existing_item = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list.id, ShoppingListItem.product_id == product_id).first()
@@ -239,7 +240,6 @@ async def register_article(article: articleRegister, db: db_dependency, current_
             shopping_list_id=shopping_list.id,
             in_promotion=article.in_promotion,
             need_coupons=article.need_coupons,
-            price=article.price,
             quantity=article.quantity,
             status="pending",
             comment=article.comment

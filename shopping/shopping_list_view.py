@@ -136,10 +136,12 @@ async def get_current_shopping_list_view(db: db_dependency, current_user: Users 
     items_detailed = []
     for item in items:
         product = None
+        catalog_price = None
         if item.product_id is not None:
             product = db.query(Product).filter(Product.id == item.product_id).first()
+            catalog_price = product.default_price if product else None
 
-        if item.comment is not None:
+        if item.comment is not None and product is not None:
             product.comment = item.comment #? On affiche le commentaire de la liste de course en priorité, s'il existe. C'est plus pertinent pour l'utilisateur que le commentaire générique du produit.
         
         user = None
@@ -157,7 +159,7 @@ async def get_current_shopping_list_view(db: db_dependency, current_user: Users 
             id=item.id,
             custom_sort_index=item.custom_sort_index,
             quantity=item.quantity,
-            price=item.price,
+            price=catalog_price,
             status=item.status,
             in_promotion=item.in_promotion,
             need_coupons=item.need_coupons,
@@ -200,8 +202,10 @@ async def get_last_shopping_list_view(db: db_dependency, current_user: Users = D
     items_detailed = []
     for item in items:
         product = None
+        catalog_price = None
         if item.product_id is not None:
             product = db.query(Product).filter(Product.id == item.product_id).first()
+            catalog_price = product.default_price if product else None
         
         user = None
         if item.affected_user_id is not None:
@@ -217,7 +221,7 @@ async def get_last_shopping_list_view(db: db_dependency, current_user: Users = D
             id=item.id,
             custom_sort_index=item.custom_sort_index,
             quantity=item.quantity,
-            price=item.price,
+            price=catalog_price,
             status=item.status,
             in_promotion=item.in_promotion,
             need_coupons=item.need_coupons,
@@ -273,15 +277,16 @@ async def get_last_shopping_list_recap(db: db_dependency, current_user: Users = 
     if shopping_list.house_id is not None:
         house = db.query(House).filter(House.id == shopping_list.house_id).first()
 
-    items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list.id).all()
+    items_with_catalog_price = (
+        db.query(ShoppingListItem.quantity, Product.default_price)
+        .join(Product, ShoppingListItem.product_id == Product.id)
+        .filter(ShoppingListItem.shopping_list_id == shopping_list.id)
+        .all()
+    )
 
     #! On rapelle que le total final est calculé à la cloture de la liste. D'ou ce calcul.
-    current_total = 0.0
-    number_of_items = 0
-    for item in items:
-        if item.price is not None:
-            current_total += item.price * item.quantity
-        number_of_items += item.quantity
+    current_total = sum((price or 0) * quantity for quantity, price in items_with_catalog_price)
+    number_of_items = sum(quantity for quantity, _ in items_with_catalog_price)
 
     return ShoppingListRecap(
         id=shopping_list.id,
