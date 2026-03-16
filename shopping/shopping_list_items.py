@@ -4,11 +4,11 @@ from fastapi import APIRouter, HTTPException, Depends, responses, status, Reques
 from sqlalchemy import Date
 from database import SessionLocal
 from sqlalchemy.orm import Session
-from models import ShoppingListItem, ShoppingList, Users
-from typing import List, Annotated
+from models import ShoppingListItem, ShoppingList, Users, Product
+from typing import List, Annotated, cast
 from pydantic import BaseModel, ConfigDict
-from typing import List, Annotated
 from auth import get_current_user
+from shopping.list_versioning import increment_current_list_version
 
 
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
@@ -50,11 +50,12 @@ def get_db():
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-def increment_version(shopping_list_id: int, db: db_dependency):
-    shopping_list = db.query(ShoppingList).filter(ShoppingList.id == shopping_list_id).first()
-    if shopping_list is not None:
-        shopping_list.version += 1 #type: ignore
-        db.commit()
+
+def _get_product_catalog_price(db: Session, product_id: int) -> float | None:
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    return cast(float | None, product.default_price)
 
 
 class ShoppingListItemBase(BaseModel):
@@ -83,6 +84,24 @@ class ShoppingListItemCreate(BaseModel):
     comment: str | None = None
 
 
+def _to_shopping_list_item_base(db: Session, item: ShoppingListItem) -> ShoppingListItemBase:
+    catalog_price = _get_product_catalog_price(db, cast(int, item.product_id))
+    return ShoppingListItemBase(
+        id=cast(int, item.id),
+        shopping_list_id=cast(int, item.shopping_list_id),
+        product_id=cast(int, item.product_id),
+        affected_user_id=cast(int | None, item.affected_user_id),
+        custom_sort_index=cast(int | None, item.custom_sort_index),
+        in_promotion=cast(bool, item.in_promotion),
+        need_coupons=cast(bool, item.need_coupons),
+        quantity=cast(int, item.quantity),
+        price=catalog_price,
+        comment=cast(str | None, item.comment),
+        status=cast(str, item.status),
+        created_at=cast(datetime, item.created_at),
+    )
+
+
 @router.get("/shopping_list/{shopping_list_id}", response_model=List[ShoppingListItemBase])
 async def get_shopping_list_items_by_shopping_list(shopping_list_id: int, db: db_dependency, current_user: Users = Depends(get_current_user)):
     shopping_list = db.query(ShoppingList).filter(ShoppingList.id == shopping_list_id).first()
@@ -91,7 +110,7 @@ async def get_shopping_list_items_by_shopping_list(shopping_list_id: int, db: db
     if shopping_list.house_id != current_user.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list")
     shopping_list_items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list_id).all()
-    return shopping_list_items
+    return [_to_shopping_list_item_base(db, item) for item in shopping_list_items]
 
 @router.get(
     "/shopping_list_synch/{shopping_list_id}",
@@ -119,7 +138,7 @@ async def get_shopping_list_items_synch(
     
     shopping_list_items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list_id).all()
     response.headers["ETag"] = current_etag
-    return shopping_list_items
+    return [_to_shopping_list_item_base(db, item) for item in shopping_list_items]
 
 @router.post("/create", response_model=ShoppingListItemBase)
 async def create_shopping_list_item(shopping_list_item: ShoppingListItemCreate, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -129,6 +148,8 @@ async def create_shopping_list_item(shopping_list_item: ShoppingListItemCreate, 
     if shopping_list.house_id != current_user.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list")
 
+    _get_product_catalog_price(db, shopping_list_item.product_id)
+
     db_shopping_list_item = ShoppingListItem(
         shopping_list_id=shopping_list_item.shopping_list_id,
         product_id=shopping_list_item.product_id,
@@ -136,16 +157,15 @@ async def create_shopping_list_item(shopping_list_item: ShoppingListItemCreate, 
         in_promotion=shopping_list_item.in_promotion,
         need_coupons=shopping_list_item.need_coupons,
         quantity=shopping_list_item.quantity,
-        price=shopping_list_item.price,
-        comment="", #! On omet volontairement le commentaire, remplacer par le commentaire du produit
+        comment=None, #! On omet volontairement le commentaire, remplacer par le commentaire du produit
         status="pending",
         created_at=datetime.utcnow()
     )
     db.add(db_shopping_list_item)
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore
-    return db_shopping_list_item
+    return _to_shopping_list_item_base(db, db_shopping_list_item)
 
 @router.delete("/delete/{shopping_list_item_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_shopping_list_item(shopping_list_item_id: int, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -159,8 +179,8 @@ async def delete_shopping_list_item(shopping_list_item_id: int, db: db_dependenc
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list")
     
     db.delete(shopping_list_item)
+    increment_current_list_version(db, shopping_list_id=shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
-    increment_version(shopping_list_item.shopping_list_id, db) #type: ignore
 
 @router.put("/update/{shopping_list_item_id}", response_model=ShoppingListItemBase)
 async def update_shopping_list_item(shopping_list_item_id: int, shopping_list_item: ShoppingListItemCreate, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -172,17 +192,18 @@ async def update_shopping_list_item(shopping_list_item_id: int, shopping_list_it
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found")
     if shopping_list.house_id != current_user.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list")
+    _get_product_catalog_price(db, shopping_list_item.product_id)
     db_shopping_list_item.shopping_list_id = shopping_list_item.shopping_list_id # type: ignore
     db_shopping_list_item.product_id = shopping_list_item.product_id # type: ignore
     db_shopping_list_item.affected_user_id = shopping_list_item.affected_user_id # type: ignore
     db_shopping_list_item.in_promotion = shopping_list_item.in_promotion # type: ignore
+    db_shopping_list_item.need_coupons = shopping_list_item.need_coupons # type: ignore
     db_shopping_list_item.quantity = shopping_list_item.quantity # type: ignore
-    db_shopping_list_item.price = shopping_list_item.price # type: ignore
     db_shopping_list_item.comment = shopping_list_item.comment # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore
-    return db_shopping_list_item
+    return _to_shopping_list_item_base(db, db_shopping_list_item)
 
 @router.post("/update_status/{shopping_list_item_id}", response_model=ShoppingListItemBase)
 async def update_shopping_list_item_status(shopping_list_item_id: int, new_status: str, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -198,26 +219,17 @@ async def update_shopping_list_item_status(shopping_list_item_id: int, new_statu
     if new_status not in autorized_statuses:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Status must be one of {autorized_statuses}")
     db_shopping_list_item.status = new_status # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
-    return db_shopping_list_item
+    return _to_shopping_list_item_base(db, db_shopping_list_item)
 
 @router.post("/update_price/{shopping_list_item_id}", response_model=ShoppingListItemBase)
 async def update_shopping_list_item_price(shopping_list_item_id: int, new_price: float, db: db_dependency, current_user: Users = Depends(get_current_user)):
-    db_shopping_list_item = db.query(ShoppingListItem).filter(ShoppingListItem.id == shopping_list_item_id).first()
-    if db_shopping_list_item is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list item not found") 
-    shopping_list = db.query(ShoppingList).filter(ShoppingList.id == db_shopping_list_item.shopping_list_id).first()
-    if shopping_list is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found") 
-    if shopping_list.house_id != current_user.house_id: #type: ignore
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list") 
-    db_shopping_list_item.price = new_price # type: ignore
-    db.commit()
-    db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
-    return db_shopping_list_item
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Item price is deprecated. Price source of truth is products.default_price",
+    )
 
 @router.post("/update_quantity/{shopping_list_item_id}", response_model=ShoppingListItemBase)
 async def update_shopping_list_item_quantity(shopping_list_item_id: int, new_quantity: int, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -230,10 +242,10 @@ async def update_shopping_list_item_quantity(shopping_list_item_id: int, new_qua
     if shopping_list.house_id != current_user.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list") 
     db_shopping_list_item.quantity = new_quantity # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
-    return db_shopping_list_item
+    return _to_shopping_list_item_base(db, db_shopping_list_item)
 
 @router.post("/affect_to_user/{shopping_list_item_id}/{user_id}", response_model=ShoppingListItemBase)
 async def affect_shopping_list_item_to_user(shopping_list_item_id: int, user_id: int, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -251,16 +263,17 @@ async def affect_shopping_list_item_to_user(shopping_list_item_id: int, user_id:
     if user.house_id != shopping_list.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User doesn't belong to the house of the shopping list")
     db_shopping_list_item.affected_user_id = user_id # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
-    return db_shopping_list_item
+    return _to_shopping_list_item_base(db, db_shopping_list_item)
 
 class CustomUpdateShoppingListItem(BaseModel):
     quantity: int | None = None
     price: float | None = None
     in_promotion: bool | None = None
     need_coupons: bool | None = None
+    comment: str | None = None
 
 @router.post("/custom_update/{shopping_list_item_id}", response_model=ShoppingListItemBase)
 async def custom_update_shopping_list_item(shopping_list_item_id: int, update_data: CustomUpdateShoppingListItem, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -274,13 +287,27 @@ async def custom_update_shopping_list_item(shopping_list_item_id: int, update_da
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list") 
     if update_data.quantity is not None:
         db_shopping_list_item.quantity = update_data.quantity # type: ignore
-    if update_data.price is not None:
-        db_shopping_list_item.price = update_data.price # type: ignore
+    
+    #! Le prix est traité à part, car un none équivaut à une suppression du prix.
+    db_product = db.query(Product).filter(Product.id == db_shopping_list_item.product_id).first()
+    if db_product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Linked product not found")
+    db_product.default_price = update_data.price # type: ignore
+    #! On met à jour le prix du produit lié, ce qui aura pour effet de mettre à jour le prix de tous les items liés à ce produit, même ceux qui n'ont pas été modifiés via cette route. C'est volontaire, pour éviter d'avoir un prix dans l'item qui diverge du prix du produit.
+
     if update_data.in_promotion is not None:
         db_shopping_list_item.in_promotion = update_data.in_promotion # type: ignore
     if update_data.need_coupons is not None:
         db_shopping_list_item.need_coupons = update_data.need_coupons # type: ignore
+        
+    #! Le commentaire est traité à part, on le met à jour même s'il est à None, pour permettre de supprimer un commentaire existant
+    db_linked_product = db.query(Product).filter(Product.id == db_shopping_list_item.product_id).first()
+    linked_product_comment = cast(str | None, db_linked_product.comment) if db_linked_product is not None else None
+    if linked_product_comment == update_data.comment:
+        db_shopping_list_item.comment = None # type: ignore
+    else:
+        db_shopping_list_item.comment = update_data.comment # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
-    return db_shopping_list_item
+    return _to_shopping_list_item_base(db, db_shopping_list_item)

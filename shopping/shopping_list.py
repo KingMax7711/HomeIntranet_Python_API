@@ -7,6 +7,7 @@ from models import ShoppingList, ShoppingListItem, Users, ProductRecurrence, Pro
 from typing import List, Annotated
 from pydantic import BaseModel, ConfigDict
 from auth import get_current_user
+from shopping.list_versioning import increment_current_list_version
 
 
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
@@ -31,11 +32,15 @@ def get_db():
 db_dependency = Annotated[Session, Depends(get_db)]
 
 
-def increment_version(shopping_list_id: int, db: db_dependency):
-    shopping_list = db.query(ShoppingList).filter(ShoppingList.id == shopping_list_id).first()
-    if shopping_list is not None:
-        shopping_list.version += 1 #type: ignore
-        db.commit()
+def _compute_shopping_list_total(db: Session, shopping_list_id: int) -> float:
+    total_rows = (
+        db.query(ShoppingListItem.quantity, Product.default_price)
+        .join(Product, ShoppingListItem.product_id == Product.id)
+        .filter(ShoppingListItem.shopping_list_id == shopping_list_id)
+        .all()
+    )
+    return sum((price or 0) * quantity for quantity, price in total_rows)
+
 class ShoppingListBase(BaseModel):
     id: int 
     house_id: int 
@@ -98,7 +103,6 @@ async def create_shopping_list(shopping_list: ShoppingListCreate, db: db_depende
             affected_user_id=None,
             in_promotion=False,
             quantity=1,
-            price=db_product.default_price if db_product else None,
             comment=None,
             status="pending",
             created_at=datetime.now()
@@ -142,7 +146,6 @@ async def create_shopping_list_from_old(new_shopping_list: ShoppingListCreate, o
             affected_user_id=None,
             in_promotion=item.in_promotion,
             quantity=item.quantity,
-            price=item.price,
             comment=item.comment,
             status="pending",
             created_at=datetime.now()
@@ -163,7 +166,6 @@ async def create_shopping_list_from_old(new_shopping_list: ShoppingListCreate, o
                 affected_user_id=None,
                 in_promotion=False,
                 quantity=1,
-                price=db_product.default_price if db_product else None,
                 comment=None,
                 status="pending",
                 created_at=datetime.now()
@@ -180,9 +182,8 @@ async def update_shopping_list(shopping_list_id: int, shopping_list: ShoppingLis
     if db_shopping_list is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found")
     
-    db_shopping_list.house_id = shopping_list.house_id # type: ignore
     db_shopping_list.mall_id = shopping_list.mall_id # type: ignore
-    db_shopping_list.version += 1 # type: ignore
+    increment_current_list_version(db, shopping_list_id=shopping_list_id)
     db.commit()
     db.refresh(db_shopping_list)
     return db_shopping_list
@@ -195,8 +196,7 @@ async def close_shopping_list(shopping_list_id: int, db: db_dependency, current_
     if shopping_list.house_id != current_user.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list")
     
-    total_list_items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list_id).all()
-    shopping_list.total = sum(item.price * item.quantity if item.price else 0 for item in total_list_items) # type: ignore #!!! Attention à calculer le total plus tard
+    shopping_list.total = _compute_shopping_list_total(db, shopping_list_id) # type: ignore
     shopping_list.closed_at = datetime.now() # type: ignore
     shopping_list.status = "completed" # type: ignore
     db.commit()
@@ -214,7 +214,7 @@ async def set_in_progress_shopping_list(shopping_list_id: int, db: db_dependency
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only shopping lists in preparation can be set to in progress")
     
     shopping_list.status = "in_progress" # type: ignore
-    shopping_list.version += 1 # type: ignore
+    increment_current_list_version(db, shopping_list_id=shopping_list_id)
     db.commit()
     db.refresh(shopping_list)
     return shopping_list
@@ -240,8 +240,7 @@ async def close_all_current_shopping_lists(db: db_dependency, current_user: User
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No current shopping list found for this house")
     
     for shopping_list in shopping_lists:
-        total_list_items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list.id).all()
-        shopping_list.total = sum(item.price * item.quantity if item.price else 0 for item in total_list_items) # type: ignore #!!! Attention à calculer le total plus tard
+        shopping_list.total = _compute_shopping_list_total(db, shopping_list.id) # type: ignore
         shopping_list.closed_at = datetime.now() # type: ignore
         shopping_list.status = "completed" # type: ignore
     db.commit()
@@ -269,7 +268,7 @@ async def sort_items_in_shopping_list(shopping_list_id: int, sorted_item_ids: Li
         if item_id in item_dict:
             item_dict[item_id].custom_sort_index = index # type: ignore
     
+    increment_current_list_version(db, shopping_list_id=shopping_list_id)
     db.commit()
     db.refresh(shopping_list)
-    increment_version(shopping_list_id, db) #type: ignore
     return shopping_list

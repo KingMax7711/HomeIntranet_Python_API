@@ -5,10 +5,11 @@ from sqlalchemy import Date
 from sqlalchemy.exc import IntegrityError
 from database import SessionLocal
 from sqlalchemy.orm import Session
-from models import Category, Product, Users, ShoppingListItem
+from models import Category, Product, Users, ShoppingListItem, ShoppingList, ProductRecurrence
 from typing import List, Annotated
 from pydantic import BaseModel
 from auth import get_current_user
+from shopping.list_versioning import increment_current_list_version
 
 
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
@@ -71,13 +72,21 @@ async def delete_product(product_id: int, db: db_dependency):
     product = db.query(Product).filter(Product.id == product_id).first()
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
-    
+    affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
     reference = db.query(ShoppingListItem).filter(ShoppingListItem.product_id == product_id).all()
-    if reference:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Product is referenced in shopping list items and cannot be deleted")
+    reference_bis = db.query(ProductRecurrence).filter(ProductRecurrence.product_id == product_id).all()
+    for article in reference:
+        db.delete(article)
+    for recurrence in reference_bis:
+        db.delete(recurrence)
+    db.commit()  # Commit deletions of references before deleting the product
+    db.refresh(product)  # Refresh the product instance to reflect the deletions
 
     db.delete(product)
+    for shopping_list_id, in affected_rows:
+        increment_current_list_version(db, shopping_list_id=shopping_list_id)
     db.commit()
+
 
 @router.put("/update/{product_id}", response_model=ProductBase)
 async def update_product(product_id: int, product: ProductCreate, db: db_dependency):
@@ -95,6 +104,9 @@ async def update_product(product_id: int, product: ProductCreate, db: db_depende
     db_product.comment = product.comment # type: ignore
     db_product.category_id = product.category_id # type: ignore
     try:
+        affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
+        for shopping_list_id, in affected_rows:
+            increment_current_list_version(db, shopping_list_id=shopping_list_id)
         db.commit()
         db.refresh(db_product)
         return db_product

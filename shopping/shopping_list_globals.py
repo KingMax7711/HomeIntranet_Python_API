@@ -6,6 +6,7 @@ from models import Users, ShoppingList, ShoppingListItem, Product, Category
 from auth import get_current_user
 from typing import Annotated, List
 from pydantic import BaseModel, ConfigDict
+from shopping.list_versioning import increment_current_list_version
 
 
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
@@ -75,12 +76,13 @@ class articleRegister(BaseModel):
     #! On omet volontraiement le champs affected_user, il sera entrer par l'utilisateur plus tard
     in_promotion: bool 
     need_coupons: bool
-    price: float
+    price: float | None = None
     quantity: int
+    comment: str | None = None
+
     #! Tout les champs suivant sont volontairement omis, ils seront calculé ou entrer plus tard
     # status: str
     # created_at: datetime
-    # comment: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 class ShoppingListItemBase(BaseModel):
@@ -212,8 +214,6 @@ async def get_all_categories(db: db_dependency, current_user: Users = Depends(ge
 async def register_article(article: articleRegister, db: db_dependency, current_user: Users = Depends(get_current_user)):
     if article.quantity <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantity must be > 0")
-    if article.price < 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Price must be >= 0")
 
     shopping_list = db.query(ShoppingList).filter(ShoppingList.id == article.shopping_list, ShoppingList.house_id == current_user.house_id, ShoppingList.status.in_(["preparation", "in_progress"])).first()
     if not shopping_list:
@@ -221,13 +221,15 @@ async def register_article(article: articleRegister, db: db_dependency, current_
 
     try:
         product_id = _resolve_or_create_product_id(db, article.product)
+        linked_product = db.query(Product).filter(Product.id == product_id).first()
+        if linked_product is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
         #? On vérifie que l'article qu'on ajoute soit pas déja dans la liste, si c'est le cas on incrémente uniquement la quantité au lieu de créer une nouvelle ligne
         existing_item = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list.id, ShoppingListItem.product_id == product_id).first()
         if existing_item:
             existing_item.quantity += article.quantity # type: ignore
-
-            shopping_list.version += 1  # type: ignore
+            increment_current_list_version(db, shopping_list_id=shopping_list.id) # type: ignore
 
             db.commit()
             db.refresh(existing_item)
@@ -238,14 +240,14 @@ async def register_article(article: articleRegister, db: db_dependency, current_
             shopping_list_id=shopping_list.id,
             in_promotion=article.in_promotion,
             need_coupons=article.need_coupons,
-            price=article.price,
             quantity=article.quantity,
             status="pending",
+            comment=article.comment
         )
         db.add(new_item)
 
         # Keep shopping list version consistent with the ETag sync endpoint
-        shopping_list.version += 1  # type: ignore
+        increment_current_list_version(db, shopping_list_id=shopping_list.id) # type: ignore
 
         db.commit()
         db.refresh(new_item)
@@ -291,9 +293,15 @@ async def update_products_custom(products: ProductUpdateCustom, db: db_dependenc
             product_db.default_price = products.default_price # type: ignore
         if products.comment is not None:
             product_db.comment = products.comment # type: ignore
-        if products.category_id is not None:
+        if products.category_id is None:
+            product_db.category_id = None # type: ignore
+        elif products.category_id is not None:
             category = _resolve_or_create_category_id(db, products.category_id)
             product_db.category_id = category # type: ignore
+        affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
+        for shopping_list_id, in affected_rows:
+            increment_current_list_version(db, shopping_list_id=shopping_list_id)
+
         product_db = db.query(Product).filter(Product.id == product_id).first()
         db.commit()
         db.refresh(product_db)
