@@ -184,6 +184,12 @@ def _resolve_or_create_product_id(db: Session, payload: int | ProductInline) -> 
             return existing_after.id  # type: ignore
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product already exists")
 
+def increment_current_list_version(db: db_dependency):
+    current_list = db.query(ShoppingList).filter(ShoppingList.status.in_(['preparation', 'in_progress'])).first()
+    if current_list:
+        current_list.version += 1 # type: ignore
+        db.commit()
+
 @router.get("/shopping_list_active")
 async def get_shopping_list_active(db: db_dependency, current_user: Users = Depends(get_current_user)):
     shopping_list = db.query(ShoppingList).filter(ShoppingList.house_id == current_user.house_id, ShoppingList.status.in_(["preparation", "in_progress"])).first()
@@ -297,6 +303,7 @@ async def update_products_custom(products: ProductUpdateCustom, db: db_dependenc
         product_db = db.query(Product).filter(Product.id == product_id).first()
         db.commit()
         db.refresh(product_db)
+        increment_current_list_version(db)
         return product_db
     except HTTPException:
         raise
