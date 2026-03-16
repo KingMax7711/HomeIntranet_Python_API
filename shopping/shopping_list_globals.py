@@ -293,7 +293,9 @@ async def update_products_custom(products: ProductUpdateCustom, db: db_dependenc
             product_db.default_price = products.default_price # type: ignore
         if products.comment is not None:
             product_db.comment = products.comment # type: ignore
-        if products.category_id is not None:
+        if products.category_id is None:
+            product_db.category_id = None # type: ignore
+        elif products.category_id is not None:
             category = _resolve_or_create_category_id(db, products.category_id)
             product_db.category_id = category # type: ignore
         affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
