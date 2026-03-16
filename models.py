@@ -90,7 +90,6 @@ class ShoppingListItem(Base):
     custom_sort_index = Column(Integer, nullable=True) # Permet de fixer l'ordre des produits dans la liste
     in_promotion = Column(Boolean, default=False, nullable=False, server_default="false")
     need_coupons = Column(Boolean, default=False, nullable=False, server_default="false")
-    price = Column(Float, nullable=True)
     quantity = Column(Integer, default=1, nullable=False, server_default="1")
     status = Column(String, index=True, nullable=False, server_default="pending") # pending / found / not_found / given_up
     created_at = Column(DateTime(timezone=True), server_default=func.now())

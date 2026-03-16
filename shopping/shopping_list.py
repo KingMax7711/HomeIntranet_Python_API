@@ -31,6 +31,16 @@ def get_db():
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
+
+def _compute_shopping_list_total(db: Session, shopping_list_id: int) -> float:
+    total_rows = (
+        db.query(ShoppingListItem.quantity, Product.default_price)
+        .join(Product, ShoppingListItem.product_id == Product.id)
+        .filter(ShoppingListItem.shopping_list_id == shopping_list_id)
+        .all()
+    )
+    return sum((price or 0) * quantity for quantity, price in total_rows)
+
 class ShoppingListBase(BaseModel):
     id: int 
     house_id: int 
@@ -93,7 +103,6 @@ async def create_shopping_list(shopping_list: ShoppingListCreate, db: db_depende
             affected_user_id=None,
             in_promotion=False,
             quantity=1,
-            price=db_product.default_price if db_product else None,
             comment=None,
             status="pending",
             created_at=datetime.now()
@@ -137,7 +146,6 @@ async def create_shopping_list_from_old(new_shopping_list: ShoppingListCreate, o
             affected_user_id=None,
             in_promotion=item.in_promotion,
             quantity=item.quantity,
-            price=item.price,
             comment=item.comment,
             status="pending",
             created_at=datetime.now()
@@ -158,7 +166,6 @@ async def create_shopping_list_from_old(new_shopping_list: ShoppingListCreate, o
                 affected_user_id=None,
                 in_promotion=False,
                 quantity=1,
-                price=db_product.default_price if db_product else None,
                 comment=None,
                 status="pending",
                 created_at=datetime.now()
@@ -189,8 +196,7 @@ async def close_shopping_list(shopping_list_id: int, db: db_dependency, current_
     if shopping_list.house_id != current_user.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list")
     
-    total_list_items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list_id).all()
-    shopping_list.total = sum(item.price * item.quantity if item.price else 0 for item in total_list_items) # type: ignore #!!! Attention à calculer le total plus tard
+    shopping_list.total = _compute_shopping_list_total(db, shopping_list_id) # type: ignore
     shopping_list.closed_at = datetime.now() # type: ignore
     shopping_list.status = "completed" # type: ignore
     db.commit()
@@ -234,8 +240,7 @@ async def close_all_current_shopping_lists(db: db_dependency, current_user: User
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No current shopping list found for this house")
     
     for shopping_list in shopping_lists:
-        total_list_items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list.id).all()
-        shopping_list.total = sum(item.price * item.quantity if item.price else 0 for item in total_list_items) # type: ignore #!!! Attention à calculer le total plus tard
+        shopping_list.total = _compute_shopping_list_total(db, shopping_list.id) # type: ignore
         shopping_list.closed_at = datetime.now() # type: ignore
         shopping_list.status = "completed" # type: ignore
     db.commit()
