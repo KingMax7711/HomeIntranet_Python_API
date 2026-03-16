@@ -6,6 +6,7 @@ from models import Users, ShoppingList, ShoppingListItem, Product, Category
 from auth import get_current_user
 from typing import Annotated, List
 from pydantic import BaseModel, ConfigDict
+from shopping.list_versioning import increment_current_list_version
 
 
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
@@ -226,8 +227,7 @@ async def register_article(article: articleRegister, db: db_dependency, current_
         existing_item = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list.id, ShoppingListItem.product_id == product_id).first()
         if existing_item:
             existing_item.quantity += article.quantity # type: ignore
-
-            shopping_list.version += 1  # type: ignore
+            increment_current_list_version(db, shopping_list_id=shopping_list.id) # type: ignore
 
             db.commit()
             db.refresh(existing_item)
@@ -245,7 +245,7 @@ async def register_article(article: articleRegister, db: db_dependency, current_
         db.add(new_item)
 
         # Keep shopping list version consistent with the ETag sync endpoint
-        shopping_list.version += 1  # type: ignore
+        increment_current_list_version(db, shopping_list_id=shopping_list.id) # type: ignore
 
         db.commit()
         db.refresh(new_item)
@@ -294,6 +294,10 @@ async def update_products_custom(products: ProductUpdateCustom, db: db_dependenc
         if products.category_id is not None:
             category = _resolve_or_create_category_id(db, products.category_id)
             product_db.category_id = category # type: ignore
+        affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
+        for shopping_list_id, in affected_rows:
+            increment_current_list_version(db, shopping_list_id=shopping_list_id)
+
         product_db = db.query(Product).filter(Product.id == product_id).first()
         db.commit()
         db.refresh(product_db)

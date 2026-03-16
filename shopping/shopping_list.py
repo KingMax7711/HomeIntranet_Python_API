@@ -7,6 +7,7 @@ from models import ShoppingList, ShoppingListItem, Users, ProductRecurrence, Pro
 from typing import List, Annotated
 from pydantic import BaseModel, ConfigDict
 from auth import get_current_user
+from shopping.list_versioning import increment_current_list_version
 
 
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
@@ -30,12 +31,6 @@ def get_db():
 
 db_dependency = Annotated[Session, Depends(get_db)]
 
-
-def increment_version(shopping_list_id: int, db: db_dependency):
-    shopping_list = db.query(ShoppingList).filter(ShoppingList.id == shopping_list_id).first()
-    if shopping_list is not None:
-        shopping_list.version += 1 #type: ignore
-        db.commit()
 class ShoppingListBase(BaseModel):
     id: int 
     house_id: int 
@@ -180,9 +175,8 @@ async def update_shopping_list(shopping_list_id: int, shopping_list: ShoppingLis
     if db_shopping_list is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shopping list not found")
     
-    db_shopping_list.house_id = shopping_list.house_id # type: ignore
     db_shopping_list.mall_id = shopping_list.mall_id # type: ignore
-    db_shopping_list.version += 1 # type: ignore
+    increment_current_list_version(db, shopping_list_id=shopping_list_id)
     db.commit()
     db.refresh(db_shopping_list)
     return db_shopping_list
@@ -214,7 +208,7 @@ async def set_in_progress_shopping_list(shopping_list_id: int, db: db_dependency
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only shopping lists in preparation can be set to in progress")
     
     shopping_list.status = "in_progress" # type: ignore
-    shopping_list.version += 1 # type: ignore
+    increment_current_list_version(db, shopping_list_id=shopping_list_id)
     db.commit()
     db.refresh(shopping_list)
     return shopping_list
@@ -269,7 +263,7 @@ async def sort_items_in_shopping_list(shopping_list_id: int, sorted_item_ids: Li
         if item_id in item_dict:
             item_dict[item_id].custom_sort_index = index # type: ignore
     
+    increment_current_list_version(db, shopping_list_id=shopping_list_id)
     db.commit()
     db.refresh(shopping_list)
-    increment_version(shopping_list_id, db) #type: ignore
     return shopping_list
