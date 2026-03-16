@@ -79,6 +79,8 @@ async def delete_product(product_id: int, db: db_dependency):
         db.delete(article)
     for recurrence in reference_bis:
         db.delete(recurrence)
+    db.commit()  # Commit deletions of references before deleting the product
+    db.refresh(product)  # Refresh the product instance to reflect the deletions
 
     db.delete(product)
     for shopping_list_id, in affected_rows:
