@@ -138,6 +138,9 @@ async def get_current_shopping_list_view(db: db_dependency, current_user: Users 
         product = None
         if item.product_id is not None:
             product = db.query(Product).filter(Product.id == item.product_id).first()
+
+        if item.comment is not None:
+            product.comment = item.comment #? On affiche le commentaire de la liste de course en priorité, s'il existe. C'est plus pertinent pour l'utilisateur que le commentaire générique du produit.
         
         user = None
         if item.affected_user_id is not None:

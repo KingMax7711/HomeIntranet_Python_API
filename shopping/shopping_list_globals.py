@@ -78,10 +78,11 @@ class articleRegister(BaseModel):
     need_coupons: bool
     price: float
     quantity: int
+    comment: str | None = None
+
     #! Tout les champs suivant sont volontairement omis, ils seront calculé ou entrer plus tard
     # status: str
     # created_at: datetime
-    # comment: str | None = None
     model_config = ConfigDict(from_attributes=True)
 
 class ShoppingListItemBase(BaseModel):
@@ -241,6 +242,7 @@ async def register_article(article: articleRegister, db: db_dependency, current_
             price=article.price,
             quantity=article.quantity,
             status="pending",
+            comment=article.comment
         )
         db.add(new_item)
 

@@ -4,8 +4,8 @@ from fastapi import APIRouter, HTTPException, Depends, responses, status, Reques
 from sqlalchemy import Date
 from database import SessionLocal
 from sqlalchemy.orm import Session
-from models import ShoppingListItem, ShoppingList, Users
-from typing import List, Annotated
+from models import ShoppingListItem, ShoppingList, Users, Product
+from typing import List, Annotated, cast
 from pydantic import BaseModel, ConfigDict
 from auth import get_current_user
 from shopping.list_versioning import increment_current_list_version
@@ -255,6 +255,7 @@ class CustomUpdateShoppingListItem(BaseModel):
     price: float | None = None
     in_promotion: bool | None = None
     need_coupons: bool | None = None
+    comment: str | None = None
 
 @router.post("/custom_update/{shopping_list_item_id}", response_model=ShoppingListItemBase)
 async def custom_update_shopping_list_item(shopping_list_item_id: int, update_data: CustomUpdateShoppingListItem, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -274,6 +275,14 @@ async def custom_update_shopping_list_item(shopping_list_item_id: int, update_da
         db_shopping_list_item.in_promotion = update_data.in_promotion # type: ignore
     if update_data.need_coupons is not None:
         db_shopping_list_item.need_coupons = update_data.need_coupons # type: ignore
+        
+    #! Le commentaire est traité à part, on le met à jour même s'il est à None, pour permettre de supprimer un commentaire existant
+    db_linked_product = db.query(Product).filter(Product.id == db_shopping_list_item.product_id).first()
+    linked_product_comment = cast(str | None, db_linked_product.comment) if db_linked_product is not None else None
+    if linked_product_comment == update_data.comment:
+        db_shopping_list_item.comment = None # type: ignore
+    else:
+        db_shopping_list_item.comment = update_data.comment # type: ignore
     increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
