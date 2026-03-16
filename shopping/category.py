@@ -68,7 +68,7 @@ async def update_category(category_id: int, category: CategoryCreate, db: db_dep
     db_category = db.query(Category).filter(Category.id == category_id).first()
     if not db_category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-    if len(category.name) == 0:
+    if len(category.name.strip()) == 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category name cannot be empty")
     
     db_category.name = category.name.lower() #type: ignore
