@@ -9,6 +9,7 @@ from models import Category, Product, Users, ShoppingListItem, ShoppingList
 from typing import List, Annotated
 from pydantic import BaseModel
 from auth import get_current_user
+from shopping.list_versioning import increment_current_list_version
 
 
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
@@ -44,12 +45,6 @@ class ProductCreate(BaseModel):
     comment: str | None = None
     category_id: int | None = None
 
-def increment_current_list_version(db: db_dependency):
-    current_list = db.query(ShoppingList).filter(ShoppingList.status.in_(['preparation', 'in_progress'])).first()
-    if current_list:
-        current_list.version += 1 # type: ignore
-        db.commit()
-
 @router.get("/all", response_model=List[ProductBase])
 async def get_all_products(db: db_dependency):
     products = db.query(Product).all()
@@ -77,14 +72,15 @@ async def delete_product(product_id: int, db: db_dependency):
     product = db.query(Product).filter(Product.id == product_id).first()
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
-    increment_current_list_version(db)
+    affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
     reference = db.query(ShoppingListItem).filter(ShoppingListItem.product_id == product_id).all()
     for article in reference:
         db.delete(article)
 
     db.delete(product)
+    for shopping_list_id, in affected_rows:
+        increment_current_list_version(db, shopping_list_id=shopping_list_id)
     db.commit()
-    increment_current_list_version(db)
 
 
 @router.put("/update/{product_id}", response_model=ProductBase)
@@ -103,9 +99,11 @@ async def update_product(product_id: int, product: ProductCreate, db: db_depende
     db_product.comment = product.comment # type: ignore
     db_product.category_id = product.category_id # type: ignore
     try:
+        affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
+        for shopping_list_id, in affected_rows:
+            increment_current_list_version(db, shopping_list_id=shopping_list_id)
         db.commit()
         db.refresh(db_product)
-        increment_current_list_version(db)
         return db_product
     except IntegrityError:
         db.rollback()

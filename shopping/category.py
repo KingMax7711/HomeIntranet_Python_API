@@ -6,6 +6,7 @@ from models import Category, Users, Product, ShoppingListItem, ShoppingList
 from typing import List, Annotated
 from pydantic import BaseModel
 from auth import get_current_user
+from shopping.list_versioning import increment_current_list_version
 
 
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
@@ -35,12 +36,6 @@ class CategoryBase(BaseModel):
 class CategoryCreate(BaseModel):
     name: str
 
-def increment_current_list_version(db: db_dependency):
-    current_list = db.query(ShoppingList).filter(ShoppingList.status.in_(['preparation', 'in_progress'])).first()
-    if current_list:
-        current_list.version += 1 # type: ignore
-        db.commit()
-
 @router.get("/all", response_model=List[CategoryBase])
 async def get_all_categories(db: db_dependency):
     categories = db.query(Category).all()
@@ -69,7 +64,7 @@ async def create_category(category: CategoryCreate, db: db_dependency):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Category already exists")
     
 @router.put("/update/{category_id}", response_model=CategoryBase)
-async def update_category(category_id: int, category: CategoryCreate, db: db_dependency):
+async def update_category(category_id: int, category: CategoryCreate, db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)]):
     db_category = db.query(Category).filter(Category.id == category_id).first()
     if not db_category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
@@ -78,20 +73,23 @@ async def update_category(category_id: int, category: CategoryCreate, db: db_dep
     
     db_category.name = category.name.lower() #type: ignore
     try:
+        affected_rows = db.query(ShoppingListItem.shopping_list_id).join(Product, ShoppingListItem.product_id == Product.id).filter(Product.category_id == category_id).distinct().all()
+        for shopping_list_id, in affected_rows:
+            increment_current_list_version(db, shopping_list_id=shopping_list_id)
         db.commit()
         db.refresh(db_category)
-        increment_current_list_version(db)
         return db_category
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Category with this name already exists")
 
 @router.delete("/delete/{category_id}")
-async def delete_category(category_id: int, db: db_dependency):
+async def delete_category(category_id: int, db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)]):
     force_delete = False
     category = db.query(Category).filter(Category.id == category_id).first()
     if not category:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    affected_rows = db.query(ShoppingListItem.shopping_list_id).join(Product, ShoppingListItem.product_id == Product.id).filter(Product.category_id == category_id).distinct().all()
     
     db_products_linked = db.query(Product).filter(Product.category_id == category_id).all()
     for product in db_products_linked:
@@ -99,7 +97,8 @@ async def delete_category(category_id: int, db: db_dependency):
         product.category_id = None #type: ignore
 
     db.delete(category)
+    for shopping_list_id, in affected_rows:
+        increment_current_list_version(db, shopping_list_id=shopping_list_id)
     db.commit()
-    increment_current_list_version(db)
     return {"detail": "Category deleted successfully, take care, some products were linked to this category and have now no category" if force_delete else "Category deleted successfully"}
 

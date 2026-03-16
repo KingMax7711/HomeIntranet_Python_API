@@ -9,6 +9,7 @@ from typing import List, Annotated
 from pydantic import BaseModel, ConfigDict
 from typing import List, Annotated
 from auth import get_current_user
+from shopping.list_versioning import increment_current_list_version
 
 
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
@@ -49,12 +50,6 @@ def get_db():
         db.close()
 
 db_dependency = Annotated[Session, Depends(get_db)]
-
-def increment_version(shopping_list_id: int, db: db_dependency):
-    shopping_list = db.query(ShoppingList).filter(ShoppingList.id == shopping_list_id).first()
-    if shopping_list is not None:
-        shopping_list.version += 1 #type: ignore
-        db.commit()
 
 
 class ShoppingListItemBase(BaseModel):
@@ -142,9 +137,9 @@ async def create_shopping_list_item(shopping_list_item: ShoppingListItemCreate, 
         created_at=datetime.utcnow()
     )
     db.add(db_shopping_list_item)
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore
     return db_shopping_list_item
 
 @router.delete("/delete/{shopping_list_item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -159,8 +154,8 @@ async def delete_shopping_list_item(shopping_list_item_id: int, db: db_dependenc
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list")
     
     db.delete(shopping_list_item)
+    increment_current_list_version(db, shopping_list_id=shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
-    increment_version(shopping_list_item.shopping_list_id, db) #type: ignore
 
 @router.put("/update/{shopping_list_item_id}", response_model=ShoppingListItemBase)
 async def update_shopping_list_item(shopping_list_item_id: int, shopping_list_item: ShoppingListItemCreate, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -179,9 +174,9 @@ async def update_shopping_list_item(shopping_list_item_id: int, shopping_list_it
     db_shopping_list_item.quantity = shopping_list_item.quantity # type: ignore
     db_shopping_list_item.price = shopping_list_item.price # type: ignore
     db_shopping_list_item.comment = shopping_list_item.comment # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore
     return db_shopping_list_item
 
 @router.post("/update_status/{shopping_list_item_id}", response_model=ShoppingListItemBase)
@@ -198,9 +193,9 @@ async def update_shopping_list_item_status(shopping_list_item_id: int, new_statu
     if new_status not in autorized_statuses:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Status must be one of {autorized_statuses}")
     db_shopping_list_item.status = new_status # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
     return db_shopping_list_item
 
 @router.post("/update_price/{shopping_list_item_id}", response_model=ShoppingListItemBase)
@@ -214,9 +209,9 @@ async def update_shopping_list_item_price(shopping_list_item_id: int, new_price:
     if shopping_list.house_id != current_user.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list") 
     db_shopping_list_item.price = new_price # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
     return db_shopping_list_item
 
 @router.post("/update_quantity/{shopping_list_item_id}", response_model=ShoppingListItemBase)
@@ -230,9 +225,9 @@ async def update_shopping_list_item_quantity(shopping_list_item_id: int, new_qua
     if shopping_list.house_id != current_user.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this shopping list") 
     db_shopping_list_item.quantity = new_quantity # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
     return db_shopping_list_item
 
 @router.post("/affect_to_user/{shopping_list_item_id}/{user_id}", response_model=ShoppingListItemBase)
@@ -251,9 +246,9 @@ async def affect_shopping_list_item_to_user(shopping_list_item_id: int, user_id:
     if user.house_id != shopping_list.house_id: #type: ignore
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User doesn't belong to the house of the shopping list")
     db_shopping_list_item.affected_user_id = user_id # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
     return db_shopping_list_item
 
 class CustomUpdateShoppingListItem(BaseModel):
@@ -280,7 +275,7 @@ async def custom_update_shopping_list_item(shopping_list_item_id: int, update_da
         db_shopping_list_item.in_promotion = update_data.in_promotion # type: ignore
     if update_data.need_coupons is not None:
         db_shopping_list_item.need_coupons = update_data.need_coupons # type: ignore
+    increment_current_list_version(db, shopping_list_id=db_shopping_list_item.shopping_list_id) #type: ignore
     db.commit()
     db.refresh(db_shopping_list_item)
-    increment_version(db_shopping_list_item.shopping_list_id, db) #type: ignore 
     return db_shopping_list_item
