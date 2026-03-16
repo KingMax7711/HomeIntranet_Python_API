@@ -66,6 +66,10 @@ async def read_user_me(current_user: Annotated[Users, Depends(get_current_user)]
 async def update_user_me(user_update: UserUpdate, db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)], request: Request):
     db_user = db.query(Users).filter(Users.id == current_user.id).first()
 
+    if not db_user:
+        api_log("users.update.user_not_found", level="ERROR", request=request, tags=["users", "update"], user_id=current_user.id,email=current_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
     if user_update.first_name is not None and len(user_update.first_name) < 2:
         api_log("users.update.invalid_first_name", level="WARNING", request=request, tags=["users", "update"], user_id=db_user.id,email=db_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="First name must be at least 2 characters long")
@@ -96,6 +100,10 @@ async def update_user_me(user_update: UserUpdate, db: db_dependency, current_use
 @router.post("/update_password")
 async def update_user_password(user_update: UserUpdatePassword, db: db_dependency, current_user: Annotated[Users, Depends(get_current_user)], request: Request):
     db_user = db.query(Users).filter(Users.id == current_user.id).first()
+
+    if not db_user:
+        api_log("users.update_password.user_not_found", level="ERROR", request=request, tags=["users", "update_password"], user_id=current_user.id,email=current_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     if not bcrypt_context.verify(user_update.current_password, db_user.password): # type: ignore
         api_log("users.update_password.invalid_current_password", level="WARNING", request=request, tags=["users", "update_password"], user_id=db_user.id,email=db_user.email, correlation_id=request.headers.get("x-correlation-id")) # type: ignore

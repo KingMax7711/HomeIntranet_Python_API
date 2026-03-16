@@ -157,7 +157,7 @@ async def create_shopping_list_item(shopping_list_item: ShoppingListItemCreate, 
         in_promotion=shopping_list_item.in_promotion,
         need_coupons=shopping_list_item.need_coupons,
         quantity=shopping_list_item.quantity,
-        comment="", #! On omet volontairement le commentaire, remplacer par le commentaire du produit
+        comment=None, #! On omet volontairement le commentaire, remplacer par le commentaire du produit
         status="pending",
         created_at=datetime.utcnow()
     )
