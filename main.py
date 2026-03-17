@@ -23,6 +23,7 @@ from shopping.houses import router as houses_router
 from shopping.shopping_list_view import router as shopping_list_view_router
 from shopping.shopping_list_globals import router as shopping_list_globals_router
 from shopping.product_recurrences import router as product_recurrences_router
+from shopping.shopping_list_history import router as shopping_list_history_router
 from users import router as users_router
 
 from log import api_log
@@ -50,6 +51,7 @@ app.include_router(houses_router)
 app.include_router(shopping_list_view_router)
 app.include_router(shopping_list_globals_router)
 app.include_router(product_recurrences_router)
+app.include_router(shopping_list_history_router)
 app.include_router(users_router)
 
 # Détermine dynamiquement les origines CORS autorisées
