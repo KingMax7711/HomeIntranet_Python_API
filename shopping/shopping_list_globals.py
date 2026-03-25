@@ -238,6 +238,7 @@ async def register_article(article: articleRegister, db: db_dependency, current_
         new_item = ShoppingListItem(
             product_id=product_id,
             shopping_list_id=shopping_list.id,
+            added_by_user_id=current_user.id,
             in_promotion=article.in_promotion,
             need_coupons=article.need_coupons,
             quantity=article.quantity,

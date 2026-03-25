@@ -67,6 +67,7 @@ class ProductBase(BaseModel):
 class ShoppingListItemDetailed(BaseModel):
     id: int
     custom_sort_index: int | None = None
+    added_by_user: UserInList | None = None
     quantity: int
     price: float | None = None
     in_promotion: bool
@@ -148,6 +149,10 @@ async def get_current_shopping_list_view(db: db_dependency, current_user: Users 
         if item.affected_user_id is not None:
             user = db.query(Users).filter(Users.id == item.affected_user_id).first()
 
+        added_by_user = None
+        if item.added_by_user_id is not None:
+            added_by_user = db.query(Users).filter(Users.id == item.added_by_user_id).first()
+
         category = None
         if product and product.category_id is not None:
             category = db.query(Category).filter(Category.id == product.category_id).first()
@@ -164,7 +169,9 @@ async def get_current_shopping_list_view(db: db_dependency, current_user: Users 
             in_promotion=item.in_promotion,
             need_coupons=item.need_coupons,
             product=ProductBase.from_orm(product) if product else None,
-            affected_user=UserInList.from_orm(user) if user else None
+            affected_user=UserInList.from_orm(user) if user else None,
+            added_by_user=UserInList.from_orm(added_by_user) if added_by_user else None
+
         ))
 
     return ShoppingListView(
@@ -211,6 +218,10 @@ async def get_last_shopping_list_view(db: db_dependency, current_user: Users = D
         if item.affected_user_id is not None:
             user = db.query(Users).filter(Users.id == item.affected_user_id).first()
 
+        added_by_user = None
+        if item.added_by_user_id is not None:
+            added_by_user = db.query(Users).filter(Users.id == item.added_by_user_id).first()
+
         category = None
         if product and product.category_id is not None:
             category = db.query(Category).filter(Category.id == product.category_id).first()
@@ -226,7 +237,8 @@ async def get_last_shopping_list_view(db: db_dependency, current_user: Users = D
             in_promotion=item.in_promotion,
             need_coupons=item.need_coupons,
             product=ProductBase.from_orm(product) if product else None,
-            affected_user=UserInList.from_orm(user) if user else None
+            affected_user=UserInList.from_orm(user) if user else None,
+            added_by_user=UserInList.from_orm(added_by_user) if added_by_user else None
         ))
     
     return ShoppingListView(
