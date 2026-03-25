@@ -59,6 +59,7 @@ class ProductBase(BaseModel):
 class ShoppingListItemDetailed(BaseModel):
     id: int
     custom_sort_index: int | None = None
+    added_by_user: UserInList | None = None
     quantity: int
     price: float | None = None
     in_promotion: bool
@@ -125,6 +126,7 @@ async def get_shopping_list_recap_detailed(list_id: int, db: db_dependency, curr
     for item in db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list.id).order_by(ShoppingListItem.custom_sort_index.asc().nulls_last(), ShoppingListItem.id.asc()).all(): #type: ignore
         product = db.query(Product).filter(Product.id == item.product_id).first()
         affected_user = db.query(Users).filter(Users.id == item.affected_user_id).first() if item.affected_user_id else None #type: ignore
+        added_by_user = db.query(Users).filter(Users.id == item.added_by_user_id).first() if item.added_by_user_id else None #type: ignore
         category = db.query(Category).filter(Category.id == product.category_id).first() if product and product.category_id else None #type: ignore
         comment = item.comment if item.comment else (product.comment if product and product.comment else None) #type: ignore
         items.append(ShoppingListItemDetailed(
@@ -145,7 +147,13 @@ async def get_shopping_list_recap_detailed(list_id: int, db: db_dependency, curr
                 id=affected_user.id, #type: ignore
                 first_name=affected_user.first_name, #type: ignore
                 last_name=affected_user.last_name #type: ignore
-            ) if affected_user else None
+            ) if affected_user else None,
+            added_by_user=UserInList(
+                id=added_by_user.id, #type: ignore
+                first_name=added_by_user.first_name, #type: ignore
+                last_name=added_by_user.last_name #type: ignore
+            ) if added_by_user else None
+
         ))
 
     return ShoppingListRecapDetailed(
