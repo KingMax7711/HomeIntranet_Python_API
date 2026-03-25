@@ -87,6 +87,7 @@ class ShoppingListItem(Base):
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     shopping_list_id = Column(Integer, ForeignKey("shopping_lists.id"), nullable=False)
     affected_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    added_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     custom_sort_index = Column(Integer, nullable=True) # Permet de fixer l'ordre des produits dans la liste
     in_promotion = Column(Boolean, default=False, nullable=False, server_default="false")
     need_coupons = Column(Boolean, default=False, nullable=False, server_default="false")
