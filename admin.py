@@ -130,10 +130,10 @@ async def kick_user_from_house(user_id: int, db: db_dependency):
     db.refresh(user)
     first_name = user.first_name or ""
     last_initial = ""
-    if user.last_name:
+    if user.last_name: #type: ignore
         last_initial = f"{user.last_name[0]}."
-    name_parts = [part for part in (first_name, last_initial) if part]
-    display_name = " ".join(name_parts) if name_parts else "User"
+    name_parts = [part for part in (first_name, last_initial) if part] #type: ignore
+    display_name = " ".join(name_parts) if name_parts else "User" #type: ignore
     return f"User {display_name} has been kicked from the house {house.name}."
 
 @router.post("/reset_invitations/{house_id}", response_model=str)
