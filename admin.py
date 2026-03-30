@@ -1,7 +1,6 @@
-from datetime import date, datetime
+from datetime import date
 
-from fastapi import APIRouter, HTTPException, Depends, status, Request
-from sqlalchemy import Date
+from fastapi import APIRouter, HTTPException, Depends, status
 from database import SessionLocal
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
