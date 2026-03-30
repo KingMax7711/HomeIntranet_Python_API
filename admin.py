@@ -13,7 +13,7 @@ from auth import get_current_user
 def connection_required(current_user: Annotated[Users, Depends(get_current_user)]):
     if not current_user:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
-    if not current_user.id == 1:  #type: ignore # Assuming user with ID 1 is the admin
+    if getattr(current_user, "privileges", None) != "owner":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not enough permissions")
     return current_user
 
