@@ -61,6 +61,7 @@ class ProductBase(BaseModel):
     name: str
     comment: str | None = None
     category: str | None = None
+    fridge_product: bool
 
     model_config = ConfigDict(from_attributes=True)
 

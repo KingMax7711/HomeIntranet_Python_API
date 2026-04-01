@@ -67,6 +67,7 @@ class Product(Base):
     default_price = Column(Float, nullable=True)
     comment = Column(String, nullable=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
+    fridge_product = Column(Boolean, default=False, nullable=False, server_default="false") # Permet de préciser qu'un produit ira dans le frigo ou non.
 
 class ShoppingList(Base):
     __tablename__ = "shopping_lists"
@@ -102,3 +103,23 @@ class ProductRecurrence(Base):
     id = Column(Integer, primary_key=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
     house_id = Column(Integer, ForeignKey("houses.id"), nullable=False)
+
+class Fridge(Base):
+    __tablename__ = "fridges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    house_id = Column(Integer, ForeignKey("houses.id"), nullable=False)
+    name = Column(String, index=True)
+    main = Column(Boolean, default=False, nullable=False, server_default="false") # Permet de préciser que c'est le frigo principal de la maison (celui qui apparaît par défaut dans l'app)
+
+class FridgeItem(Base):
+    __tablename__ = "fridge_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=False)
+    fridge_id = Column(Integer, ForeignKey("fridges.id"), nullable=False)
+    quantity = Column(Integer, default=1, nullable=False, server_default="1")
+    added_at = Column(DateTime(timezone=True), server_default=func.now())
+    expiration_date = Column(Date, nullable=True)
+    source = Column(String, nullable=True) # Permet de préciser la source du produit (manual | shopping_list)
+    comment = Column(String, nullable=True)

@@ -50,6 +50,7 @@ class productBase(BaseModel):
     default_price: float | None = None
     comment: str | None = None
     category_id: int | category | None = None
+    fridge_product: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -66,6 +67,7 @@ class ProductInline(BaseModel):
     default_price: float | None = None
     comment: str | None = None
     category_id: int | CategoryInline | None = None
+    fridge_product: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -174,6 +176,7 @@ def _resolve_or_create_product_id(db: Session, payload: int | ProductInline) -> 
         default_price=payload.default_price,
         comment=payload.comment,
         category_id=category_id,
+        fridge_product=payload.fridge_product
     )
     db.add(new_product)
     try:
@@ -279,6 +282,7 @@ class ProductUpdateCustom(BaseModel):
     default_price: float | None = None
     comment: str | None = None
     category_id: int | CategoryInline | None = None
+    fridge_product: bool | None = None
 
 @router.post("/update_product_custom", response_model=productBase)
 async def update_products_custom(products: ProductUpdateCustom, db: db_dependency, current_user: Users = Depends(get_current_user)):
@@ -299,6 +303,8 @@ async def update_products_custom(products: ProductUpdateCustom, db: db_dependenc
         elif products.category_id is not None:
             category = _resolve_or_create_category_id(db, products.category_id)
             product_db.category_id = category # type: ignore
+        if products.fridge_product is not None:
+            product_db.fridge_product = products.fridge_product # type: ignore
         affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
         for shopping_list_id, in affected_rows:
             increment_current_list_version(db, shopping_list_id=shopping_list_id)
