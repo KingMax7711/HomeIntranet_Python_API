@@ -24,6 +24,9 @@ from shopping.shopping_list_view import router as shopping_list_view_router
 from shopping.shopping_list_globals import router as shopping_list_globals_router
 from shopping.product_recurrences import router as product_recurrences_router
 from shopping.shopping_list_history import router as shopping_list_history_router
+from fridge.fridges import router as fridges_router
+from fridge.fridge_items import router as fridge_items_router
+from fridge.fridge_items_view import router as fridge_items_view_router
 from users import router as users_router
 from admin import router as admin_router
 
@@ -54,6 +57,10 @@ app.include_router(shopping_list_globals_router)
 app.include_router(product_recurrences_router)
 app.include_router(shopping_list_history_router)
 app.include_router(users_router)
+app.include_router(fridges_router)
+app.include_router(fridge_items_router)
+app.include_router(fridge_items_view_router)
+
 # Routes admin
 app.include_router(admin_router)
 

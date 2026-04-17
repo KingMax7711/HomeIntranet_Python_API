@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Request
 from sqlalchemy import Date
 from database import SessionLocal
 from sqlalchemy.orm import Session
-from models import House, Users
+from models import House, Users, Fridge
 from typing import List, Annotated
 from pydantic import BaseModel, ConfigDict
 from auth import get_current_user
@@ -134,6 +134,9 @@ async def leave_house(db: db_dependency, current_user: Users = Depends(get_curre
     if len(all_users_in_house) == 1:
         # If the user is the only one in the house, delete the house
             db_user.house_id = None # type: ignore
+            linked_fridges = db.query(Fridge).filter(Fridge.house_id == db_user.house_id).all()
+            for fridge in linked_fridges:
+                db.delete(fridge)
             db.query(House).filter(House.id == db_user.house_id).delete()
     else:
         db_user.house_id = None # type: ignore
