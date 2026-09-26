@@ -112,6 +112,23 @@ async def update_fridge_item(fridge_item_id: int, fridge_item_update: FridgeItem
     db.refresh(fridge_item)
     return fridge_item
 
+@router.post('/move/{fridge_item_id}', response_model=FridgeItemBase)
+async def move_fridge_item(fridge_item_id: int, new_fridge_id: int, db: db_dependency, current_user: Users = Depends(get_current_user)):
+    fridge_item = db.query(FridgeItem).filter(FridgeItem.id == fridge_item_id).first()
+    if not fridge_item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fridge item not found")
+
+    new_fridge = db.query(Fridge).filter(Fridge.id == new_fridge_id).first()
+    if not new_fridge:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="New fridge not found")
+    if new_fridge.house_id != current_user.house_id: #type: ignore
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to the new fridge")
+
+    fridge_item.fridge_id = new_fridge_id #type: ignore
+    db.commit()
+    db.refresh(fridge_item)
+    return fridge_item
+
 @router.delete("/{fridge_item_id}")
 async def delete_fridge_item(fridge_item_id: int, db: db_dependency, current_user: Users = Depends(get_current_user)):
     fridge_item = db.query(FridgeItem).filter(FridgeItem.id == fridge_item_id).first()
@@ -127,3 +144,30 @@ async def delete_fridge_item(fridge_item_id: int, db: db_dependency, current_use
     db.delete(fridge_item)
     db.commit()
     return {"detail": "Fridge item deleted successfully"}
+
+@router.post("/massive_create", response_model=List[FridgeItemBase])
+async def massive_create_fridge_items(fridge_items: List[FridgeItemCreate], db: db_dependency, current_user: Users = Depends(get_current_user)):
+    created_items = []
+    for fridge_item in fridge_items:
+        fridge = db.query(Fridge).filter(Fridge.id == fridge_item.fridge_id).first()
+        if not fridge:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Fridge with id {fridge_item.fridge_id} not found")
+        if fridge.house_id != current_user.house_id: #type: ignore
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=f"You don't have access to fridge with id {fridge_item.fridge_id}")
+        
+        product_id = _resolve_or_create_product_id(db, fridge_item.product)
+        
+        new_fridge_item = FridgeItem(
+            product_id=product_id,
+            fridge_id=fridge_item.fridge_id,
+            quantity=fridge_item.quantity,
+            added_at=date.today(),
+            expiration_date=fridge_item.expiration_date,
+            source=fridge_item.source,
+            comment=fridge_item.comment
+        )
+        db.add(new_fridge_item)
+        db.commit()
+        db.refresh(new_fridge_item)
+        created_items.append(new_fridge_item)
+    return created_items

@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends, status, Request
 from sqlalchemy import Date
 from database import SessionLocal
 from sqlalchemy.orm import Session
-from models import House, Users, Fridge
+from models import House, Users, Fridge, FridgeItem
 from typing import List, Annotated
 from pydantic import BaseModel, ConfigDict
 from auth import get_current_user
@@ -101,8 +101,17 @@ async def update_fridge(fridge_id: int, fridge_update: FridgeCreate, db: db_depe
 async def delete_fridge(fridge_id: int, db: db_dependency, current_user: Users = Depends(get_current_user)):
     fridge = db.query(Fridge).filter(Fridge.id == fridge_id, Fridge.house_id == current_user.house_id).first()
     #! In the future, we need to delete all products linked to this fridge !
+    #* Normalement c'est fait !
     if not fridge:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fridge not found")
+    
+    fridge_items = db.query(FridgeItem).filter(FridgeItem.fridge_id == fridge_id).all()
+    if fridge_items:
+        for item in fridge_items:
+            db.delete(item)
+        db.commit()
+        db.refresh(fridge)
+
     db.delete(fridge)
     db.commit()
     return {"detail": "Fridge deleted successfully"}

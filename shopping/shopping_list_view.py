@@ -311,3 +311,43 @@ async def get_last_shopping_list_recap(db: db_dependency, current_user: Users = 
         created_at=shopping_list.created_at,
         status=shopping_list.status
     )
+
+class ShoppingListItemForFridge(BaseModel):
+    id: int
+    product_id: int
+    product_name: str
+    quantity: int
+class ShoppingListViewForFridge(BaseModel):
+    id: int
+    closed_at: datetime | None = None
+    items: List[ShoppingListItemForFridge]
+
+@router.get("/last_shopping_list/recap_for_fridge", response_model=ShoppingListViewForFridge)
+async def get_last_shopping_list_recap_for_fridge(db: db_dependency, current_user: Users = Depends(get_current_user)):
+    shopping_list = db.query(ShoppingList).filter(
+        ShoppingList.house_id == current_user.house_id,
+        ShoppingList.status == "completed"
+    ).order_by(ShoppingList.created_at.desc()).first()
+    if shopping_list is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No completed shopping list found for this house")
+
+    items = db.query(ShoppingListItem).filter(ShoppingListItem.shopping_list_id == shopping_list.id).all()
+    items_for_fridge = []
+    for item in items:
+        product = None
+        if item.product_id is not None:
+            product = db.query(Product).filter(Product.id == item.product_id).first()
+
+        if product.fridge_product:  # type: ignore
+            items_for_fridge.append(ShoppingListItemForFridge(
+                id=item.id,
+                product_id=product.id if product else None,
+                product_name=product.name if product else None,
+                quantity=item.quantity
+            ))
+
+    return ShoppingListViewForFridge(
+        id=shopping_list.id,
+        closed_at=shopping_list.closed_at,
+        items=items_for_fridge
+    )

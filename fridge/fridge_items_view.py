@@ -55,6 +55,7 @@ class FridgeItemLite(BaseModel):
 class FridgeRecap(BaseModel):
     fridge_id: int
     fridge_name: str
+    fridge_main: bool
     number_of_items: int
 
 class FridgeDetailed(BaseModel):
@@ -77,6 +78,7 @@ async def get_my_fridges_recap(
         fridge_recap = FridgeRecap(
             fridge_id=fridge.id, #type: ignore
             fridge_name=fridge.name, #type: ignore
+            fridge_main=fridge.main, #type: ignore
             number_of_items=number_of_items
         )
         fridge_recaps.append(fridge_recap)
