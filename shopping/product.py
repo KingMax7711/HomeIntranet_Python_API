@@ -5,7 +5,7 @@ from sqlalchemy import Date
 from sqlalchemy.exc import IntegrityError
 from database import SessionLocal
 from sqlalchemy.orm import Session
-from models import Category, Product, Users, ShoppingListItem, ShoppingList, ProductRecurrence
+from models import Category, Product, Users, ShoppingListItem, ShoppingList, ProductRecurrence, FridgeItem
 from typing import List, Annotated
 from pydantic import BaseModel
 from auth import get_current_user
@@ -38,12 +38,14 @@ class ProductBase(BaseModel):
     default_price: float | None = None
     comment: str | None = None
     category_id: int | None = None
+    fridge_product: bool
 
 class ProductCreate(BaseModel):
     name: str
     default_price: float | None = None
     comment: str | None = None
     category_id: int | None = None
+    fridge_product: bool = False
 
 @router.get("/all", response_model=List[ProductBase])
 async def get_all_products(db: db_dependency):
@@ -73,12 +75,15 @@ async def delete_product(product_id: int, db: db_dependency):
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
-    reference = db.query(ShoppingListItem).filter(ShoppingListItem.product_id == product_id).all()
-    reference_bis = db.query(ProductRecurrence).filter(ProductRecurrence.product_id == product_id).all()
-    for article in reference:
+    reference_shopping_list_items = db.query(ShoppingListItem).filter(ShoppingListItem.product_id == product_id).all()
+    reference_recurence = db.query(ProductRecurrence).filter(ProductRecurrence.product_id == product_id).all()
+    reference_fridge = db.query(FridgeItem).filter(FridgeItem.product_id == product_id).all()
+    for article in reference_shopping_list_items:
         db.delete(article)
-    for recurrence in reference_bis:
+    for recurrence in reference_recurence:
         db.delete(recurrence)
+    for fridge_item in reference_fridge:
+        db.delete(fridge_item)
     db.commit()  # Commit deletions of references before deleting the product
     db.refresh(product)  # Refresh the product instance to reflect the deletions
 
@@ -103,6 +108,7 @@ async def update_product(product_id: int, product: ProductCreate, db: db_depende
     db_product.default_price = product.default_price # type: ignore
     db_product.comment = product.comment # type: ignore
     db_product.category_id = product.category_id # type: ignore
+    db_product.fridge_product = product.fridge_product # type: ignore
     try:
         affected_rows = db.query(ShoppingListItem.shopping_list_id).filter(ShoppingListItem.product_id == product_id).distinct().all()
         for shopping_list_id, in affected_rows:
@@ -125,7 +131,8 @@ async def create_product(product: ProductCreate, db: db_dependency):
         name=product.name.lower(),
         default_price=product.default_price,
         comment=product.comment,
-        category_id=product.category_id
+        category_id=product.category_id,
+        fridge_product=product.fridge_product
     )
     db.add(db_product)
     try:
