@@ -101,12 +101,13 @@ async def update_fridge_item(fridge_item_id: int, fridge_item_update: FridgeItem
     
     if fridge_item_update.quantity is not None:
         fridge_item.quantity = fridge_item_update.quantity # type: ignore
-    if fridge_item_update.expiration_date is not None:
-        fridge_item.expiration_date = fridge_item_update.expiration_date # type: ignore
     if fridge_item_update.source is not None:
         fridge_item.source = fridge_item_update.source # type: ignore
     #! On traite le commentaire différement, un commentaire null signifie une suppression du commentaire et PAS une absence de mise à jour du commentaire
     fridge_item.comment = fridge_item_update.comment # type: ignore
+
+    #! On traite la date différement, une date null signifie une suppression de la date et PAS une absence de mise à jour de la date
+    fridge_item.expiration_date = fridge_item_update.expiration_date # type: ignore
     
     db.commit()
     db.refresh(fridge_item)
